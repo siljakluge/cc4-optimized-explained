@@ -120,3 +120,143 @@ class DiscoveryFSRed(FiniteStateRedAgent):
         }
 
         return map
+
+
+class StealthPivotFSRed(FiniteStateRedAgent):
+    """
+    Stealthy lateral movement profile.
+
+    Prefers stealth service discovery, discovery/pivoting, and delays noisy
+    disruptive actions. It also has a small withdrawal chance from rooted hosts.
+    """
+
+    def __init__(self, name=None, np_random=None, agent_subnets=None):
+        super().__init__(name=name, np_random=np_random, agent_subnets=agent_subnets)
+        self.print_action_output = False
+        self.print_obs_output = False
+        self.prioritise_servers = True
+
+    def set_host_state_priority_list(self):
+        return {
+            'K': 25, 'KD': 25,
+            'S': 15, 'SD': 15,
+            'U': 10, 'UD': 10,
+            'R': 0, 'RD': 0
+        }
+
+    def state_transitions_probability(self):
+        return {
+            'K': [0.35, 0.05, 0.60, None, None, None, None, None, None],
+            'KD': [None, 0.05, 0.95, None, None, None, None, None, None],
+            'S': [0.10, None, None, 0.30, 0.60, None, None, None, None],
+            'SD': [None, None, None, 0.30, 0.70, None, None, None, None],
+            'U': [None, None, None, None, None, 1.00, None, None, 0.00],
+            'UD': [None, None, None, None, None, 1.00, None, None, 0.00],
+            'R': [0.85, None, None, None, None, None, 0.05, 0.05, 0.05],
+            'RD': [0.85, None, None, None, None, None, 0.05, 0.05, 0.05],
+        }
+
+
+class ImpactRushFSRed(FiniteStateRedAgent):
+    """
+    Fast disruption profile.
+
+    Uses quicker/noisier discovery, prioritises servers, escalates quickly, and
+    then prefers Impact/Degrade over slow lateral movement.
+    """
+
+    def __init__(self, name=None, np_random=None, agent_subnets=None):
+        super().__init__(name=name, np_random=np_random, agent_subnets=agent_subnets)
+        self.print_action_output = False
+        self.print_obs_output = False
+        self.prioritise_servers = True
+
+    def set_host_state_priority_list(self):
+        return {
+            'K': 10, 'KD': 10,
+            'S': 15, 'SD': 15,
+            'U': 20, 'UD': 20,
+            'R': 5, 'RD': 5
+        }
+
+    def state_transitions_probability(self):
+        return {
+            'K': [0.10, 0.85, 0.05, None, None, None, None, None, None],
+            'KD': [None, 0.90, 0.10, None, None, None, None, None, None],
+            'S': [0.05, None, None, 0.05, 0.90, None, None, None, None],
+            'SD': [None, None, None, 0.05, 0.95, None, None, None, None],
+            'U': [None, None, None, None, None, 1.00, None, None, 0.00],
+            'UD': [None, None, None, None, None, 1.00, None, None, 0.00],
+            'R': [0.05, None, None, None, None, None, 0.55, 0.40, 0.00],
+            'RD': [0.05, None, None, None, None, None, 0.55, 0.40, 0.00],
+        }
+
+
+class DeceptionAwareFSRed(FiniteStateRedAgent):
+    """
+    Decoy-aware profile.
+
+    Checks deception frequently before exploitation, mixes stealth/aggressive
+    discovery, and sometimes withdraws to reduce persistent decoy interaction.
+    """
+
+    def __init__(self, name=None, np_random=None, agent_subnets=None):
+        super().__init__(name=name, np_random=np_random, agent_subnets=agent_subnets)
+        self.print_action_output = False
+        self.print_obs_output = False
+        self.prioritise_servers = True
+
+    def set_host_state_priority_list(self):
+        return {
+            'K': 15, 'KD': 15,
+            'S': 25, 'SD': 25,
+            'U': 10, 'UD': 10,
+            'R': 0, 'RD': 0
+        }
+
+    def state_transitions_probability(self):
+        return {
+            'K': [0.30, 0.25, 0.45, None, None, None, None, None, None],
+            'KD': [None, 0.30, 0.70, None, None, None, None, None, None],
+            'S': [0.05, None, None, 0.60, 0.35, None, None, None, None],
+            'SD': [None, None, None, 0.60, 0.40, None, None, None, None],
+            'U': [None, None, None, None, None, 1.00, None, None, 0.00],
+            'UD': [None, None, None, None, None, 1.00, None, None, 0.00],
+            'R': [0.60, None, None, None, None, None, 0.10, 0.10, 0.20],
+            'RD': [0.60, None, None, None, None, None, 0.10, 0.10, 0.20],
+        }
+
+
+class LateralSpreadFSRed(FiniteStateRedAgent):
+    """
+    Cross-subnet spread profile.
+
+    Emphasises DiscoverRemoteSystems after foothold/root access and focuses on
+    spread/persistence rather than immediate disruption.
+    """
+
+    def __init__(self, name=None, np_random=None, agent_subnets=None):
+        super().__init__(name=name, np_random=np_random, agent_subnets=agent_subnets)
+        self.print_action_output = False
+        self.print_obs_output = False
+        self.prioritise_servers = True
+
+    def set_host_state_priority_list(self):
+        return {
+            'K': 30, 'KD': 30,
+            'S': 10, 'SD': 10,
+            'U': 10, 'UD': 10,
+            'R': 0, 'RD': 0
+        }
+
+    def state_transitions_probability(self):
+        return {
+            'K': [0.70, 0.20, 0.10, None, None, None, None, None, None],
+            'KD': [None, 0.25, 0.75, None, None, None, None, None, None],
+            'S': [0.40, None, None, 0.05, 0.55, None, None, None, None],
+            'SD': [None, None, None, 0.05, 0.95, None, None, None, None],
+            'U': [None, None, None, None, None, 1.00, None, None, 0.00],
+            'UD': [None, None, None, None, None, 1.00, None, None, 0.00],
+            'R': [0.90, None, None, None, None, None, 0.02, 0.03, 0.05],
+            'RD': [0.90, None, None, None, None, None, 0.02, 0.03, 0.05],
+        }
