@@ -16,6 +16,7 @@ Primary Class:
 """
 
 from copy import deepcopy
+from enum import Enum
 
 import numpy as np
 import torch
@@ -26,6 +27,78 @@ from CybORG.Shared.Enums import TernaryEnum
 
 from wrappers.observation_graph import ObservationGraph
 from wrappers.globals import *
+
+
+def _action_type(a) -> str:
+    if a is None:
+        return "None"
+    s = str(a).strip()
+    return s.split()[0] if s else "Unknown"
+
+
+def _ternary_to_int(x) -> int:
+    if isinstance(x, Enum):
+        return int(x.value)
+    try:
+        return int(x)
+    except Exception:
+        return -1
+
+
+def _iter_strings(obj):
+    if obj is None:
+        return
+    if isinstance(obj, str):
+        yield obj.lower()
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            yield str(k).lower()
+            yield from _iter_strings(v)
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            yield from _iter_strings(v)
+    else:
+        yield str(obj).lower()
+
+
+def extract_shap_features(dict_obs: dict, msg_matrix: np.ndarray | None = None) -> dict:
+    feats = {
+        "prev_action_success": _ternary_to_int(dict_obs.get("success")),
+        "prev_action": _action_type(dict_obs.get("action")),
+    }
+
+    strings = list(_iter_strings(dict_obs))
+
+    def has_kw(*kws):
+        kws = [kw.lower() for kw in kws]
+        return int(any(any(kw in s for kw in kws) for s in strings))
+
+    feats["has_cmd_sh"] = has_kw("cmd.sh", "cmd_sh", "cmdsh")
+    feats["has_escalate"] = has_kw("escalate", "privilege escalation", "privesc", "sudo")
+    feats["has_decoy_exploit"] = has_kw("decoy", "exploit", "rfi")
+
+    if msg_matrix is not None:
+        m = np.asarray(msg_matrix)
+        if m.ndim == 2 and m.shape[1] >= 3:
+            scanned = m[:, 0]
+            compromised = m[:, 1]
+            received = m[:, 2]
+            feats["msg_any_received"] = int(np.any(received > 0))
+            feats["msg_n_received"] = int(np.sum(received > 0))
+            feats["msg_any_scanned"] = int(np.any(scanned > 0))
+            feats["msg_any_compromised"] = int(np.any(compromised > 0))
+            feats["msg_n_scanned_flags"] = int(np.sum(scanned > 0))
+            feats["msg_n_compromised_flags"] = int(np.sum(compromised > 0))
+            return feats
+
+    feats["msg_any_received"] = 0
+    feats["msg_n_received"] = 0
+    feats["msg_any_scanned"] = 0
+    feats["msg_any_compromised"] = 0
+    feats["msg_n_scanned_flags"] = 0
+    feats["msg_n_compromised_flags"] = 0
+    return feats
+
 
 class GraphWrapper(EnterpriseMAE):
     def __init__(self, env: CybORG, *args, **kwargs):
@@ -151,6 +224,12 @@ class GraphWrapper(EnterpriseMAE):
                 msg = msg[:, :2]
 
             msg = np.concatenate([msg, recieved_msg], axis=1)
+
+            if agent not in info or info[agent] is None:
+                info[agent] = {}
+            info[agent]["chosen_action_type"] = _action_type(action.get(agent))
+            info[agent]["chosen_action_str"] = str(action.get(agent))
+            info[agent]["shap_features"] = extract_shap_features(dict_obs, msg)
 
             # Update the graph based on the raw dictionary 
             g.parse_observation(dict_obs)

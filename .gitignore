@@ -34,3 +34,12 @@ CybORG/Emulator/AWS/Config/awsconfig.ini
 
 .ipynb_checkpoints/
 .idea
+
+# Generated CAGE training/explainability artifacts
+logs/
+checkpoints/
+SmokeResults/
+Results/
+Result/
+Plots/
+reward_log.jsonl

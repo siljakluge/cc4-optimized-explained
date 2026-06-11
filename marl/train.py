@@ -16,6 +16,9 @@ from argparse import ArgumentParser
 import os
 import sys
 from types import SimpleNamespace
+import random
+from dataclasses import dataclass
+from typing import Dict
 
 # Ensure project root is on sys.path so `src.*` imports work
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -61,6 +64,131 @@ N_AGENTS = 5
 MAX_THREADS = max(4, os.cpu_count() or 4)  # Dynamic based on available cores
 torch.manual_seed(SEED)
 torch.set_num_threads(MAX_THREADS)
+random.seed(SEED)
+
+
+@dataclass(frozen=True)
+class AttackProfile:
+    name: str
+    red_cls: type
+
+
+def _safe_import_profiles() -> Dict[str, type]:
+    profiles: Dict[str, type] = {"fsm_default": FiniteStateRedAgent}
+
+    import_paths = [
+        (
+            "CybORG.Agents.RedAgents",
+            [
+                "DiscoveryFSRed",
+                "VerboseFSRed",
+                "StealthPivotFSRed",
+                "ImpactRushFSRed",
+                "DeceptionAwareFSRed",
+                "LateralSpreadFSRed",
+            ],
+        ),
+        (
+            "CybORG.Agents.SimpleAgents.FSMRedVariants",
+            [
+                "DiscoveryFSRed",
+                "VerboseFSRed",
+                "StealthPivotFSRed",
+                "ImpactRushFSRed",
+                "DeceptionAwareFSRed",
+                "LateralSpreadFSRed",
+            ],
+        ),
+    ]
+
+    for module_name, class_names in import_paths:
+        try:
+            module = __import__(module_name, fromlist=class_names)
+        except Exception:
+            continue
+        for class_name in class_names:
+            cls = getattr(module, class_name, None)
+            if cls is None:
+                continue
+            profile = class_name.removesuffix("FSRed")
+            snake = "".join(
+                ("_" + ch.lower() if ch.isupper() and idx else ch.lower())
+                for idx, ch in enumerate(profile)
+            )
+            profiles[snake] = cls
+
+    return profiles
+
+
+PROFILE_REGISTRY: Dict[str, type] = _safe_import_profiles()
+
+
+def parse_profile_weights(raw: str) -> Dict[str, float]:
+    weights: Dict[str, float] = {}
+    if not raw.strip():
+        return weights
+    for token in [p.strip() for p in raw.split(",") if p.strip()]:
+        if "=" not in token:
+            raise ValueError(f"Bad profile_weights token '{token}', expected name=weight.")
+        name, value = token.split("=", 1)
+        weights[name.strip()] = float(value.strip())
+    return _filter_available_weights(weights)
+
+
+def _filter_available_weights(weights: Dict[str, float]) -> Dict[str, float]:
+    filtered = {k: v for k, v in weights.items() if k in PROFILE_REGISTRY and v > 0}
+    if not filtered:
+        return {"fsm_default": 1.0}
+    total = sum(filtered.values())
+    return {k: v / total for k, v in filtered.items()}
+
+
+def sample_profile(rng: random.Random, weights: Dict[str, float], fallback: str = "fsm_default") -> str:
+    candidates = [(name, weight) for name, weight in weights.items() if name in PROFILE_REGISTRY and weight > 0]
+    if not candidates:
+        return fallback if fallback in PROFILE_REGISTRY else "fsm_default"
+    names = [name for name, _ in candidates]
+    values = [weight for _, weight in candidates]
+    return rng.choices(names, weights=values, k=1)[0]
+
+
+def get_weights_for_update(
+    strategy: str,
+    update_idx: int,
+    single_profile: str,
+    fixed_weights: Dict[str, float],
+    warmup_updates: int,
+    harden_updates: int,
+) -> Dict[str, float]:
+    default_mixture = _filter_available_weights({
+        "fsm_default": 0.35,
+        "discovery": 0.10,
+        "stealth_pivot": 0.20,
+        "lateral_spread": 0.15,
+        "impact_rush": 0.15,
+        "deception_aware": 0.05,
+    })
+
+    if strategy == "single":
+        return _filter_available_weights({single_profile: 1.0})
+
+    if strategy == "mixture":
+        return fixed_weights or default_mixture
+
+    if strategy == "curriculum":
+        if update_idx < warmup_updates:
+            return _filter_available_weights({"fsm_default": 0.8, "discovery": 0.2})
+        if harden_updates > 0 and update_idx < warmup_updates + harden_updates:
+            return _filter_available_weights({
+                "fsm_default": 0.15,
+                "stealth_pivot": 0.30,
+                "lateral_spread": 0.25,
+                "impact_rush": 0.25,
+                "deception_aware": 0.05,
+            })
+        return fixed_weights or default_mixture
+
+    raise ValueError(f"Unknown training strategy: {strategy}")
 
 """
 Run one complete simulation episode.
@@ -74,8 +202,20 @@ Parameters:
 Returns:
     Tuple[List, float]: Per-agent PPO memories and total episode reward
 """
+def make_env(seed: int, hp, red_agent_class: type) -> GraphWrapper:
+    sg = FastEnterpriseScenarioGenerator(
+        blue_agent_class=SleepAgent,
+        green_agent_class=EnterpriseGreenAgent,
+        red_agent_class=red_agent_class,
+        steps=hp.episode_len,
+        pool_size=getattr(hp, "scenario_pool_size", 4),
+    )
+    env = CybORG(sg, "sim", seed=seed)
+    return GraphWrapper(env)
+
+
 @torch.no_grad()
-def generate_episode_job(agents, env, hp, i):
+def generate_episode_job(agents, hp, base_seed, i, profile_name):
     '''
     Per-process job to generate one episode of memories
     for all 5 agents. Returns `N_AGENTS` memory buffers, 
@@ -83,13 +223,14 @@ def generate_episode_job(agents, env, hp, i):
 
     Args: 
         agents:     list of keep.cage4.InductiveGraphAgent objects 
-        env:        wrapped cyborg object 
         hp:         hyperparameter namespace 
         i:          process id in range(0, `hp.workers`)
     '''
     torch.set_num_threads(max(1, MAX_THREADS // hp.workers))
 
     # Initialize environment
+    red_cls = PROFILE_REGISTRY.get(profile_name, FiniteStateRedAgent)
+    env = make_env(base_seed + 100_000 + i, hp, red_cls)
     env.reset()
     states = env.last_obs
     blocked_rewards = [0]*N_AGENTS
@@ -136,7 +277,7 @@ def generate_episode_job(agents, env, hp, i):
 
         states = next_state
 
-    return memory_buffers.mems, tot_reward
+    return memory_buffers.mems, tot_reward, profile_name
 
 
     """
@@ -150,22 +291,25 @@ def generate_episode_job(agents, env, hp, i):
         hp (SimpleNamespace): Hyperparameter container
         seed (int): RNG seed for reproducibility
     """
-def train(agents, hp, seed=SEED):
+def train(
+        agents,
+        hp,
+        seed=SEED,
+        strategy="single",
+        single_profile="fsm_default",
+        profile_weights=None,
+        warmup_updates=0,
+        harden_updates=0,
+        log_per_profile=False,
+):
     [agent.train() for agent in agents]
     log = []
+    per_profile_log = []
+    profile_weights = profile_weights or {}
 
-    # Only call constructors once out here to save some time
-    envs = []
-    for i in range(min(hp.workers, hp.N)):
-        sg = FastEnterpriseScenarioGenerator(
-            blue_agent_class=SleepAgent,
-            green_agent_class=EnterpriseGreenAgent,
-            red_agent_class=FiniteStateRedAgent,
-            steps=hp.episode_len,
-            pool_size=4,
-        )
-        env = CybORG(sg, "sim", seed=seed)
-        envs.append(GraphWrapper(env))
+    print("Hyperparams:", vars(hp))
+    print("Available red profiles:", sorted(PROFILE_REGISTRY))
+    print("Training strategy:", strategy)
 
     # Define learn function for threads to call later so we can 
     # parallelize the backprop step. Use more threads for Agent 4 
@@ -179,17 +323,33 @@ def train(agents, hp, seed=SEED):
             return agents[i].learn()
 
     # Begin training loop 
-    for e in range(hp.training_episodes // hp.N):
-        e *= hp.N
+    for update_idx in range(hp.training_episodes // hp.N):
+        e = update_idx * hp.N
+        weights = get_weights_for_update(
+            strategy=strategy,
+            update_idx=update_idx,
+            single_profile=single_profile,
+            fixed_weights=profile_weights,
+            warmup_updates=warmup_updates,
+            harden_updates=harden_updates,
+        )
+        rng = random.Random(seed + update_idx)
+        episode_profiles = [sample_profile(rng, weights, fallback=single_profile) for _ in range(hp.N)]
 
         # Generate N episodes in parallel 
         out = Parallel(backend='loky', n_jobs=hp.workers)(
-            delayed(generate_episode_job)(agents, envs[i % len(envs)], hp, i) for i in range(hp.N)
+            delayed(generate_episode_job)(
+                agents,
+                hp,
+                seed + update_idx * 1_000_000,
+                i,
+                episode_profiles[i],
+            ) for i in range(hp.N)
         )
 
         # Concat memories across episodes, and transfer them to agents' 
         # internal memory buffers 
-        memories, avg_rewards = zip(*out)
+        memories, avg_rewards, used_profiles = zip(*out)
 
         # transpose: per-agent list of per-episode memory objects
         per_agent_mems = [list(m) for m in zip(*memories)]
@@ -212,8 +372,27 @@ def train(agents, hp, seed=SEED):
         # Log average reward across all episodes 
         avg_reward = sum(avg_rewards) / hp.N
         print(f"Avg reward for episode: {avg_reward}")
+        if strategy != "single":
+            hist = {}
+            for profile in used_profiles:
+                hist[profile] = hist.get(profile, 0) + 1
+            print("Profiles:", " ".join(f"{k}:{v}" for k, v in sorted(hist.items())))
         log.append((avg_reward,e,sum(last_losses)/N_AGENTS))
         torch.save(log, f'logs/{hp.fnames}.pt')
+
+        if log_per_profile:
+            rewards_by_profile = {}
+            for reward, profile in zip(avg_rewards, used_profiles):
+                rewards_by_profile.setdefault(profile, []).append(reward)
+            for profile, rewards in rewards_by_profile.items():
+                per_profile_log.append({
+                    "update": update_idx,
+                    "episode": e,
+                    "profile": profile,
+                    "avg_reward": sum(rewards) / len(rewards),
+                    "n": len(rewards),
+                })
+            torch.save(per_profile_log, f"logs/{hp.fnames}_per_profile.pt")
 
         # Checkpoint model states 
         for i in range(N_AGENTS):
@@ -234,19 +413,44 @@ if __name__ == '__main__':
                     choices=["default", "contractor_off", "red_only"])
     ap.add_argument("--reward_blue", action="store_true")
     ap.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"], help="Device to use for training")
+    ap.add_argument("--strategy", choices=["single", "mixture", "curriculum"], default="single")
+    ap.add_argument("--single_profile", default="fsm_default")
+    ap.add_argument("--profile_weights", default="")
+    ap.add_argument("--warmup_updates", type=int, default=2)
+    ap.add_argument("--harden_updates", type=int, default=0)
+    ap.add_argument("--log_per_profile", action="store_true")
+    ap.add_argument("--mini", action="store_true", help="Tiny local smoke-test config")
+    ap.add_argument("--KIServer", action="store_true", help="Larger GPU/server config")
     args = ap.parse_args()
     print(args)
 
     os.environ["CYBORG_PHASE_REWARD_MODE"] = args.phase_reward_mode
-    os.environ["CYBORG_REWARD_blue"] = "1" if args.reward_blue else "0"
+    os.environ["CYBORG_REWARD_BLUE"] = "1" if args.reward_blue else "0"
 
-    if args.debug:
+    if args.mini:
+        HYPER_PARAMS.N = 2
+        HYPER_PARAMS.workers = 1
+        HYPER_PARAMS.bs = 32
+        HYPER_PARAMS.episode_len = 10
+        HYPER_PARAMS.training_episodes = 2
+        HYPER_PARAMS.epochs = 1
+        HYPER_PARAMS.scenario_pool_size = 1
+    elif args.debug:
         HYPER_PARAMS.N = 2
         HYPER_PARAMS.workers = 2
         HYPER_PARAMS.bs = 64
         HYPER_PARAMS.episode_len = 50
         HYPER_PARAMS.training_episodes = 20   # really tiny
         HYPER_PARAMS.epochs = 1
+        HYPER_PARAMS.scenario_pool_size = 2
+    elif args.KIServer:
+        HYPER_PARAMS.N = 10
+        HYPER_PARAMS.workers = 12
+        HYPER_PARAMS.bs = 1500
+        HYPER_PARAMS.episode_len = 500
+        HYPER_PARAMS.training_episodes = 10000
+        HYPER_PARAMS.epochs = 4
+        HYPER_PARAMS.scenario_pool_size = 4
 
 
     # Add directory for log files
@@ -282,4 +486,17 @@ if __name__ == '__main__':
     ) for _ in range(N_AGENTS)]
 
     HYPER_PARAMS.fnames = args.fname
-    train(agents, HYPER_PARAMS)
+    weights = parse_profile_weights(args.profile_weights) if args.profile_weights else {}
+    if args.single_profile not in PROFILE_REGISTRY:
+        raise ValueError(f"Unknown single_profile={args.single_profile}. Available: {sorted(PROFILE_REGISTRY)}")
+
+    train(
+        agents,
+        HYPER_PARAMS,
+        strategy=args.strategy,
+        single_profile=args.single_profile,
+        profile_weights=weights,
+        warmup_updates=args.warmup_updates,
+        harden_updates=args.harden_updates,
+        log_per_profile=args.log_per_profile,
+    )
