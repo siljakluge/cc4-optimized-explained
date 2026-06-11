@@ -1,0 +1,125 @@
+======================================================================
+  INSTRUMENTED EVALUATION RESULTS
+======================================================================
+  Episodes: 10
+  Mean reward: -998.0 +/- 346.1
+  Min/Max:     -1935.0 / -655.0
+  Wall time:   60.3s
+
+--- Priority Action Counts (all agents, all episodes) ---
+  P1_Restore                    :    549
+  P2_Allow                      :     43
+  P3_Block                      :    364
+  P4_Remove                     :    480
+  P4_Restore(escalated)         :    293
+  P6_RedeployDecoy              :   2131
+  P7_DeployDecoy                :   1731
+  P8_Sleep                      :  19359
+
+--- Restore vs Remove Ratio ---
+  Restores:    842  (63.7%)
+  Removes:     480  (36.3%)
+  Ratio:    1.75 restores per remove
+
+--- Per-Phase Reward Breakdown ---
+  Phase 0: total=   -5820.0  steps=  1670  avg/step=-3.485
+  Phase 1: total=   -1415.0  steps=  1670  avg/step=-0.847
+  Phase 2: total=   -2745.0  steps=  1650  avg/step=-1.664
+
+--- Most Compromised Hosts (proc/conn alerts) ---
+  restricted_zone_a_subnet_server_host_0            :   109 alerts
+  restricted_zone_a_subnet_user_host_2              :    90 alerts
+  restricted_zone_b_subnet_server_host_0            :    86 alerts
+  operational_zone_b_subnet_server_host_1           :    72 alerts
+  restricted_zone_a_subnet_server_host_1            :    70 alerts
+  operational_zone_a_subnet_server_host_0           :    70 alerts
+  restricted_zone_b_subnet_server_host_1            :    69 alerts
+  restricted_zone_a_subnet_user_host_0              :    65 alerts
+  operational_zone_b_subnet_user_host_0             :    62 alerts
+  restricted_zone_a_subnet_user_host_1              :    58 alerts
+  operational_zone_a_subnet_user_host_1             :    57 alerts
+  restricted_zone_b_subnet_user_host_2              :    53 alerts
+  operational_zone_a_subnet_user_host_2             :    53 alerts
+  operational_zone_b_subnet_user_host_2             :    52 alerts
+  operational_zone_b_subnet_server_host_0           :    51 alerts
+
+--- Most Restored Hosts ---
+  operational_zone_a_subnet_user_host_2             :    25 restores
+  operational_zone_a_subnet_user_host_1             :    23 restores
+  restricted_zone_a_subnet_user_host_0              :    23 restores
+  restricted_zone_a_subnet_user_host_2              :    22 restores
+  operational_zone_b_subnet_user_host_1             :    21 restores
+  operational_zone_b_subnet_user_host_0             :    20 restores
+  operational_zone_b_subnet_user_host_3             :    19 restores
+  public_access_zone_subnet_server_host_0           :    19 restores
+  restricted_zone_a_subnet_user_host_1              :    18 restores
+  operational_zone_a_subnet_user_host_0             :    18 restores
+
+--- Most Removed Hosts ---
+  public_access_zone_subnet_user_host_1             :    18 removes
+  restricted_zone_a_subnet_user_host_2              :    14 removes
+  office_network_subnet_user_host_2                 :    14 removes
+  admin_network_subnet_user_host_4                  :    13 removes
+  restricted_zone_a_subnet_user_host_0              :    13 removes
+  restricted_zone_b_subnet_user_host_0              :    13 removes
+  public_access_zone_subnet_user_host_0             :    12 removes
+  public_access_zone_subnet_user_host_2             :    12 removes
+  restricted_zone_a_subnet_user_host_1              :    12 removes
+  operational_zone_b_subnet_user_host_0             :    11 removes
+
+--- Per-Agent Action Breakdown ---
+  blue_agent_0:
+    P1_Restore                    :   101
+    P2_Allow                      :    30
+    P3_Block                      :    61
+    P4_Remove                     :    72
+    P4_Restore(escalated)         :    46
+    P6_RedeployDecoy              :   351
+    P7_DeployDecoy                :   243
+    P8_Sleep                      :  4086
+  blue_agent_1:
+    P1_Restore                    :   128
+    P2_Allow                      :    13
+    P3_Block                      :    85
+    P4_Remove                     :    66
+    P4_Restore(escalated)         :    35
+    P6_RedeployDecoy              :   415
+    P7_DeployDecoy                :   276
+    P8_Sleep                      :  3972
+  blue_agent_2:
+    P1_Restore                    :    78
+    P3_Block                      :    54
+    P4_Remove                     :    70
+    P4_Restore(escalated)         :    43
+    P6_RedeployDecoy              :   317
+    P7_DeployDecoy                :   249
+    P8_Sleep                      :  4179
+  blue_agent_3:
+    P1_Restore                    :   107
+    P3_Block                      :    88
+    P4_Remove                     :    54
+    P4_Restore(escalated)         :    41
+    P6_RedeployDecoy              :   387
+    P7_DeployDecoy                :   279
+    P8_Sleep                      :  4034
+  blue_agent_4:
+    P1_Restore                    :   135
+    P3_Block                      :    76
+    P4_Remove                     :   218
+    P4_Restore(escalated)         :   128
+    P6_RedeployDecoy              :   661
+    P7_DeployDecoy                :   684
+    P8_Sleep                      :  3088
+
+--- Per-Episode Rewards ---
+  ep   1:    -780.0  [P0=-485  P1=-155  P2=-140]
+  ep   2:   -1005.0  [P0=-610  P1=-220  P2=-175]
+  ep   3:    -655.0  [P0=-435  P1=-105  P2=-115]
+  ep   4:   -1200.0  [P0=-785  P1=-115  P2=-300]
+  ep   5:   -1935.0  [P0=-530  P1=-205  P2=-1200]
+  ep   6:    -750.0  [P0=-500  P1=-115  P2=-135]
+  ep   7:    -895.0  [P0=-645  P1=-85  P2=-165]
+  ep   8:    -795.0  [P0=-455  P1=-150  P2=-190]
+  ep   9:    -995.0  [P0=-650  P1=-160  P2=-185]
+  ep  10:    -970.0  [P0=-725  P1=-105  P2=-140]
+======================================================================
