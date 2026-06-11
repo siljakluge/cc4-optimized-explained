@@ -19,7 +19,7 @@ from CybORG.Simulator.Scenarios import EnterpriseScenarioGenerator
 
 from plotting.plot_actions import log_actions_jsonl
 from SHAP.policy_shap_heuristic import train_surrogate_and_shap
-from SHAP.shap_gnn import run_shap
+from SHAP.shap_gnn import run_shap, write_profile_shap_comparison
 
 
 # ----------------------------
@@ -623,12 +623,19 @@ def run_explainability_profiles(
                 df["prev_action_success"] = pd.to_numeric(df["prev_action_success"], errors="coerce").fillna(-1)
 
             if not df.empty:
-                run_shap(df, max_classes=8, out_dir=str(out_dir_shap))
+                _, _, _, _, shap_summary = run_shap(df, max_classes=8, out_dir=str(out_dir_shap))
+                save_json(shap_summary, str(out_dir_shap / "shap_summary.json"))
                 print(f"[{prof}] SHAP(GNN) done.")
             else:
                 print(f"[{prof}] SHAP skipped: empty dataset (no shap_features/chosen_action_type).")
 
-
+    if shap and (not is_heuristic):
+        comparison_profiles = [p for p in per_profile_dirs if p != "mixed"]
+        generated = write_profile_shap_comparison(out_root, comparison_profiles)
+        if generated:
+            print("[SHAP] Profile comparison artifacts:")
+            for path in generated:
+                print(f"  - {path}")
 
     print(f"\n[explain] Done. Results under: {out_root}")
 
