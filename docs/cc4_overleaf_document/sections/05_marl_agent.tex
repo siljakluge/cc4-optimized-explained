@@ -1,0 +1,78 @@
+\section{MARL Agent}
+
+\subsection{Overview}
+
+The \texttt{marl/} directory implements a multi-agent reinforcement learning approach using graph observations, graph convolutional networks, self-attention, and PPO. The intent is to represent the cyber environment as a changing network rather than as a fixed flat vector.
+
+\subsection{Graph Observation Wrapper}
+
+\texttt{marl/wrappers/graph\_wrapper.py} extends \texttt{EnterpriseMAE}. It translates CybORG observations into PyTorch-Geometric-compatible graph states and translates learned action IDs back into CybORG actions.
+
+The graph contains typed nodes such as:
+\begin{itemize}
+  \item systems: hosts, servers, routers;
+  \item connections: processes and open network connections;
+  \item files: observed files, including suspicious malware-like artifacts;
+  \item internet or structural nodes.
+\end{itemize}
+
+The wrapper also fuses graph features with tabular features from the blue wrapper, including mission phase, subnet policy, block state, and message-derived features. For explainability, it adds metadata such as chosen action type, chosen action string, and SHAP-oriented feature summaries.
+
+\subsection{Action Space}
+
+The learned policy emits one categorical distribution over a concatenated action vector:
+
+\begin{itemize}
+  \item node actions: \texttt{Analyse}, \texttt{Remove}, \texttt{Restore}, \texttt{DeployDecoy};
+  \item edge actions: \texttt{AllowTraffic}, \texttt{BlockTraffic};
+  \item global action: \texttt{Monitor}.
+\end{itemize}
+
+\texttt{GraphWrapper.action\_translator} maps the selected action ID to a CybORG action object for the correct subnet and host.
+
+\subsection{Actor-Critic Architecture}
+
+\texttt{marl/models/cage4.py} defines:
+
+\begin{itemize}
+  \item \texttt{InductiveActorNetwork};
+  \item \texttt{InductiveCriticNetwork};
+  \item \texttt{InductiveGraphPPOAgent};
+  \item memory and batching utilities.
+\end{itemize}
+
+The actor applies two GCN layers. At each stage, a self-attention mechanism summarizes host and router embeddings into a global vector. The mission phase is embedded and injected into this global state. Action heads then score node, edge, and global actions.
+
+\begin{lstlisting}
+Graph state + phase
+  -> GCN layers
+  -> self-attention global summary
+  -> node-action head
+  -> edge-action head
+  -> global-action head
+  -> categorical policy
+\end{lstlisting}
+
+The critic uses a similar graph-processing structure to estimate value for PPO updates.
+
+\subsection{Training and Evaluation}
+
+Typical commands from the local workflow are:
+
+\begin{lstlisting}
+python marl/train.py mini_curriculum_smoke --mini \
+  --strategy curriculum --warmup_updates 1 \
+  --log_per_profile --device cpu
+\end{lstlisting}
+
+For GPU experiments:
+
+\begin{lstlisting}
+python marl/train.py exp_curriculum_gpu \
+  --KIServer --strategy curriculum \
+  --warmup_updates 200 --harden_updates 200 \
+  --log_per_profile --phase_reward_mode red_only \
+  --device cuda
+\end{lstlisting}
+
+The profile registry is tolerant: profiles missing from the checked-out tree are ignored and remaining weights are renormalized.

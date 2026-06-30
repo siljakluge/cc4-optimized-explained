@@ -1,0 +1,52 @@
+\section{Heuristic Agent}
+
+\subsection{Current Implementations}
+
+The repository contains submission adapters for \texttt{EnterpriseHeuristicAgentV11a} and \texttt{EnterpriseHeuristicAgentV11b}. The v11a adapter describes the agent as a rule-based priority heuristic with Restore-only threat response and preemptive Operational Zone blocking. The v11b adapter adds a redesigned messaging protocol for coordinated blocking.
+
+Because local documents report mixed results, this draft treats v11a as the best documented baseline and v11b as an experimental messaging variant until a fresh benchmark confirms otherwise.
+
+\subsection{Design Philosophy}
+
+The heuristic is deterministic. At every step, it evaluates a priority cascade and executes the first valid action. There is no learned value function and no stochastic exploration. The strength of the agent comes from encoding environment-specific timing facts:
+
+\begin{itemize}
+  \item \textbf{Restore-only response}: Remove is too slow against privilege escalation and does not remove malicious files. Restore is the reliable eviction path.
+  \item \textbf{Decoy saturation}: each host is filled with up to three decoys, increasing the chance that blind red exploitation wastes time.
+  \item \textbf{Malicious-file detection}: high-density unsigned files are treated as strong evidence of compromise.
+  \item \textbf{Flag-age filtering}: transient process flags are delayed to avoid green false positives.
+  \item \textbf{Phase-aware blocking}: operational-zone paths are blocked around phase transitions to avoid windows where red can move while blue is busy.
+\end{itemize}
+
+\subsection{v11a: Preemptive Operational-Zone Blocking}
+
+The v11a source states that the relevant transition windows are:
+
+\begin{itemize}
+  \item before Phase 1, block \texttt{restricted\_zone\_a\_subnet -> operational\_zone\_a\_subnet};
+  \item before Phase 2, block \texttt{restricted\_zone\_b\_subnet -> operational\_zone\_b\_subnet}.
+\end{itemize}
+
+The rationale is timing. If the agent waits until a phase transition is visible, it may be occupied by higher-priority Restore actions. Preemptive blocking pays a small service-availability cost before the phase but avoids a high-risk open path at the beginning of the active mission phase.
+
+\subsection{v11b: Messaging Redesign}
+
+The v11b source describes a new 8-bit message format with fields for red detection, root-level suspicion, restore-busy status, zone-clear status, threat count, and block requests. Its goal is to let upstream agents ask downstream operational-zone agents to block traffic from compromised zones.
+
+The research notes warn that earlier messaging designs showed little measurable value. The likely reasons are:
+\begin{itemize}
+  \item \texttt{comms\_policy} already provides much of the useful coordination;
+  \item only a small subset of phase-agent combinations has useful upstream dependency;
+  \item one-step message delay is large relative to red action timing.
+\end{itemize}
+
+\subsection{Submission Adapter}
+
+The heuristic submission wraps the inner agent with a \texttt{BlueFlatWrapperV2}-based environment. The adapter bridges the official \texttt{evaluation.py} interface by:
+
+\begin{itemize}
+  \item retrieving action masks from the wrapper;
+  \item forwarding the action index returned by the heuristic;
+  \item storing outgoing messages from each agent;
+  \item injecting those messages into the next environment step, because the official evaluator does not pass them directly.
+\end{itemize}

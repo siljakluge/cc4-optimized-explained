@@ -1,0 +1,59 @@
+\section{Environment Model}
+
+\subsection{Network and Agents}
+
+CC4 uses five blue agents. Four agents defend a single restricted or operational zone; the fifth protects the public-access, admin, and office areas. A simplified assignment is:
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Agent} & \textbf{Controlled area} & \textbf{Role} \\
+\midrule
+\texttt{blue\_agent\_0} & Restricted Zone A & guard upstream path to OZA \\
+\texttt{blue\_agent\_1} & Operational Zone A & protect phase-1 mission target \\
+\texttt{blue\_agent\_2} & Restricted Zone B & guard upstream path to OZB \\
+\texttt{blue\_agent\_3} & Operational Zone B & protect phase-2 mission target \\
+\texttt{blue\_agent\_4} & Public access, admin, office & guard HQ-facing subnets \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Mission Phases}
+
+Episodes run for 500 steps. The heuristic documentation uses the following phase boundaries:
+
+\begin{itemize}
+  \item Phase 0: steps 0--166, pre-planning/general operation.
+  \item Phase 1: steps 167--333, Zone A becomes the high-priority mission area.
+  \item Phase 2: steps 334--499, Zone B becomes the high-priority mission area.
+\end{itemize}
+
+The current phase is exposed in the observation. Agents must adapt both host response and traffic policy to the phase.
+
+\subsection{Red Kill Chain}
+
+The practical red chain observed by the defensive agents is:
+
+\begin{lstlisting}
+PhishingEmail -> Discover -> ServiceScan -> ExploitRemoteService
+              -> PrivilegeEscalate -> DegradeServices / Impact
+\end{lstlisting}
+
+Two signatures are especially important in this fork:
+\begin{itemize}
+  \item \texttt{ExploitRemoteService} drops high-density unsigned command files.
+  \item \texttt{PrivilegeEscalate} drops high-density unsigned escalation files.
+\end{itemize}
+
+These file artifacts motivate \texttt{BlueFlatWrapperV2}'s malicious-file bit.
+
+\subsection{Observation Layout for the Heuristic Agent}
+
+The heuristic agent consumes a flat vector from \texttt{BlueFlatWrapperV2}. Conceptually, the vector contains:
+
+\begin{lstlisting}
+[ phase | subnet blocks | subnet comms policy | process flags
+  | connection flags | peer messages | malicious-file flags ]
+\end{lstlisting}
+
+The appended malicious-file flags are one bit per controlled host. A flag is set when a host contains a file with density at least 0.9 and no valid signature. Local notes state that green activity does not generate these files, making this a high-precision signal in the current environment.

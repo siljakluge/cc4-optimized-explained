@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import os, sys, json, time, random, shutil, re, importlib.util
+import os, sys, json, time, random, shutil, re, importlib.util, traceback
 from typing import Dict, List, Any, Optional, Tuple
 from statistics import mean, stdev
 from datetime import datetime
@@ -19,7 +19,7 @@ from CybORG.Simulator.Scenarios import EnterpriseScenarioGenerator
 
 from plotting.plot_actions import log_actions_jsonl
 from SHAP.policy_shap_heuristic import train_surrogate_and_shap
-from SHAP.shap_gnn import run_shap
+from SHAP.shap_gnn import run_shap, write_profile_shap_comparison
 
 
 # ----------------------------
@@ -51,6 +51,10 @@ def save_json(obj, path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         json.dump(obj, f, indent=2, default=str)
+
+def log_episode_error(path: str | Path, **kwargs):
+    with Path(path).open("a", encoding="utf-8") as f:
+        f.write(json.dumps(kwargs, default=str) + "\n")
 
 def load_submission(source: str):
     source_path = Path(source).resolve()
@@ -353,6 +357,9 @@ def run_explainability_profiles(
     episode_length: int = 500,
     shap: bool = False,
     is_heuristic: bool = False,
+    shap_background_samples: int = 200,
+    shap_explain_samples: int = 500,
+    shap_random_state: int = 42,
 
     # profile selection mode
     mode: str = "single",                 # single | sweep
@@ -417,6 +424,8 @@ def run_explainability_profiles(
         # clear logs (fresh run)
         (prof_dir / "reward_log.jsonl").write_text("")
         (prof_dir / "actions.jsonl").write_text("")
+        (prof_dir / "scalar_rewards.jsonl").write_text("")
+        (prof_dir / "episode_errors.jsonl").write_text("")
     # pro Profil-Ordner:
     # ----------------------------
     # Episode loop
@@ -433,6 +442,43 @@ def run_explainability_profiles(
 
     def prof_seed(base: int | None, offset: int) -> int:
         return (base if base is not None else 0) + offset
+
+    def run_episode_safely(
+        *,
+        prof: str,
+        red_cls: type,
+        epi: int,
+        env_seed: int,
+        prof_dir: Path,
+    ) -> Tuple[bool, float, List[Any], List[Dict[str, Any]]]:
+        try:
+            r, pol_rows, infos = run_one_episode_and_log(
+                submission=submission,
+                episode_idx=epi,
+                env_seed=env_seed,
+                episode_length=episode_length,
+                red_profile_name=prof,
+                red_cls=red_cls,
+                log_path_reward=prof_dir / "reward_log.jsonl",
+                log_path_actions=prof_dir / "actions.jsonl",
+                is_heuristic=is_heuristic,
+                shap=shap,
+                prof_dir=prof_dir,
+                epi=epi,
+            )
+            return True, r, pol_rows, infos
+        except Exception as exc:
+            log_episode_error(
+                prof_dir / "episode_errors.jsonl",
+                profile=prof,
+                episode=epi,
+                env_seed=env_seed,
+                error_type=type(exc).__name__,
+                error=str(exc),
+                traceback=traceback.format_exc(),
+            )
+            print(f"[{prof}] Episode {epi} failed with {type(exc).__name__}: {exc}; continuing.")
+            return False, 0.0, [], []
 
     if mode == "sweep":
         pbar = tqdm(total=len([p for p in profiles_to_run]), desc="Explainability sweep", unit="run", dynamic_ncols=True)
@@ -459,20 +505,15 @@ def run_explainability_profiles(
                         os.environ["CYBORG_REWARD_LOG_PATH"] = str(reward_log)
                         os.environ["CYBORG_ATTACK_PROFILE"] = prof
                         os.environ["CYBORG_RUN_TAG"] = out_root.name  # oder submission.NAME + timestamp
-                        r, pol_rows, infos = run_one_episode_and_log(
-                            submission=submission,
-                            episode_idx=epi,
-                            env_seed=env_seed,
-                            episode_length=episode_length,
-                            red_profile_name=chosen,
+                        ok, r, pol_rows, infos = run_episode_safely(
+                            prof=chosen,
                             red_cls=red_cls,
-                            log_path_reward=prof_dir / "reward_log.jsonl",
-                            log_path_actions=prof_dir / "actions.jsonl",
-                            is_heuristic=is_heuristic,
-                            shap=shap,
-                            prof_dir=prof_dir,
                             epi=epi,
+                            env_seed=env_seed,
+                            prof_dir=prof_dir,
                         )
+                        if not ok:
+                            continue
                         totals_by_profile.setdefault(chosen, []).append(r)
                         if shap:
                             shap_policy_rows[chosen].extend(pol_rows)
@@ -501,20 +542,15 @@ def run_explainability_profiles(
                         os.environ["CYBORG_REWARD_LOG_PATH"] = str(reward_log)
                         os.environ["CYBORG_ATTACK_PROFILE"] = prof
                         os.environ["CYBORG_RUN_TAG"] = out_root.name  # oder submission.NAME + timestamp
-                        r, pol_rows, infos = run_one_episode_and_log(
-                            submission=submission,
-                            episode_idx=epi,
-                            env_seed=env_seed,
-                            episode_length=episode_length,
-                            red_profile_name=prof,
+                        ok, r, pol_rows, infos = run_episode_safely(
+                            prof=prof,
                             red_cls=red_cls,
-                            log_path_reward=prof_dir / "reward_log.jsonl",
-                            log_path_actions=prof_dir / "actions.jsonl",
-                            is_heuristic=is_heuristic,
-                            shap=shap,
-                            prof_dir=prof_dir,
                             epi=epi,
+                            env_seed=env_seed,
+                            prof_dir=prof_dir,
                         )
+                        if not ok:
+                            continue
                         totals_by_profile[prof].append(r)
                         if shap:
                             shap_policy_rows[prof].extend(pol_rows)
@@ -546,20 +582,15 @@ def run_explainability_profiles(
             os.environ["CYBORG_REWARD_LOG_PATH"] = str(reward_log)
             os.environ["CYBORG_ATTACK_PROFILE"] = prof
             os.environ["CYBORG_RUN_TAG"] = out_root.name  # oder submission.NAME + timestamp
-            r, pol_rows, infos = run_one_episode_and_log(
-                submission=submission,
-                episode_idx=epi,
-                env_seed=env_seed,
-                episode_length=episode_length,
-                red_profile_name=prof,
+            ok, r, pol_rows, infos = run_episode_safely(
+                prof=prof,
                 red_cls=red_cls,
-                log_path_reward=prof_dir / "reward_log.jsonl",
-                log_path_actions=prof_dir / "actions.jsonl",
-                is_heuristic=is_heuristic,
-                shap=shap,
-                prof_dir=prof_dir,
                 epi=epi,
+                env_seed=env_seed,
+                prof_dir=prof_dir,
             )
+            if not ok:
+                continue
             totals_by_profile.setdefault(prof, []).append(r)
             if shap:
                 shap_policy_rows[prof].extend(pol_rows)
@@ -612,6 +643,9 @@ def run_explainability_profiles(
             summary = train_surrogate_and_shap(
                 shap_policy_rows.get(prof, []),
                 out_dir=str(out_dir_shap),
+                background_samples=shap_background_samples,
+                explain_samples=shap_explain_samples,
+                random_state=shap_random_state,
             )
             print(f"[{prof}] SHAP(heuristic) summary:", summary)
 
@@ -623,12 +657,26 @@ def run_explainability_profiles(
                 df["prev_action_success"] = pd.to_numeric(df["prev_action_success"], errors="coerce").fillna(-1)
 
             if not df.empty:
-                run_shap(df, max_classes=8, out_dir=str(out_dir_shap))
+                _, _, _, _, shap_summary = run_shap(
+                    df,
+                    max_classes=8,
+                    out_dir=str(out_dir_shap),
+                    background_samples=shap_background_samples,
+                    explain_samples=shap_explain_samples,
+                    random_state=shap_random_state,
+                )
+                save_json(shap_summary, str(out_dir_shap / "shap_summary.json"))
                 print(f"[{prof}] SHAP(GNN) done.")
             else:
                 print(f"[{prof}] SHAP skipped: empty dataset (no shap_features/chosen_action_type).")
 
-
+    if shap:
+        comparison_profiles = [p for p in per_profile_dirs if p != "mixed"]
+        generated = write_profile_shap_comparison(out_root, comparison_profiles)
+        if generated:
+            print("[SHAP] Profile comparison artifacts:")
+            for path in generated:
+                print(f"  - {path}")
 
     print(f"\n[explain] Done. Results under: {out_root}")
 
@@ -646,6 +694,9 @@ if __name__ == "__main__":
     parser.add_argument("--episode-length", type=int, default=500)
 
     parser.add_argument("--shap", action="store_true")
+    parser.add_argument("--shap-background-samples", type=int, default=200)
+    parser.add_argument("--shap-explain-samples", type=int, default=500)
+    parser.add_argument("--shap-random-state", type=int, default=42)
 
     parser.add_argument("--output", type=str, default=os.path.abspath("Results"))
     parser.add_argument("--submission-path", type=str, default=os.path.abspath(""))
@@ -688,6 +739,9 @@ if __name__ == "__main__":
         episode_length=args.episode_length,
         shap=args.shap,
         is_heuristic=args.is_heuristic,
+        shap_background_samples=args.shap_background_samples,
+        shap_explain_samples=args.shap_explain_samples,
+        shap_random_state=args.shap_random_state,
         mode=args.mode,
         strategy=args.strategy,
         single_profile=args.single_profile,

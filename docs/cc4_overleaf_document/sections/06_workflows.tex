@@ -1,0 +1,50 @@
+\section{Workflows}
+
+\subsection{Heuristic Evaluation}
+
+The repository README gives a direct evaluation pattern:
+
+\begin{lstlisting}
+python -c "
+import sys; sys.path.insert(0, 'CybORG/Evaluation/submission')
+from submission import Submission
+from CybORG.Evaluation.evaluation import run_evaluation
+run_evaluation(Submission, log_path='Results/v11a/', max_eps=100, seed=42)
+"
+\end{lstlisting}
+
+For v11b, adjust the inserted submission path to \texttt{CybORG/Evaluation/submission\_v11b}.
+
+\subsection{MARL Smoke Test}
+
+The local workflow document recommends:
+
+\begin{lstlisting}
+source .venv/bin/activate
+python marl/train.py mini_curriculum_smoke --mini \
+  --strategy curriculum --warmup_updates 1 \
+  --log_per_profile --device cpu
+\end{lstlisting}
+
+Expected outputs include reward logs under \texttt{logs/} and per-agent checkpoints under \texttt{checkpoints/}.
+
+\subsection{Explainability Run}
+
+The explainability pipeline can run a short single-profile pass:
+
+\begin{lstlisting}
+python explain.py \
+  --mode single \
+  --strategy single \
+  --single_profile fsm_default \
+  --max-eps 1 \
+  --episode-length 5 \
+  --non-heuristic \
+  --shap \
+  --seed 1337 \
+  --phase_reward_mode red_only \
+  --output SmokeResults/FULL_RUN \
+  --submission-path .
+\end{lstlisting}
+
+Expected outputs include reward logs, scalar reward summaries, action logs, and SHAP analysis folders.
