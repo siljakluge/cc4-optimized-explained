@@ -232,7 +232,14 @@ def write_profile_shap_comparison(run_dir: str | Path, profiles: list[str], out_
 
     return generated
 
-def run_shap(df: pd.DataFrame, max_classes: int | None = None, out_dir: str = None):
+def run_shap(
+    df: pd.DataFrame,
+    max_classes: int | None = None,
+    out_dir: str = None,
+    background_samples: int = 200,
+    explain_samples: int = 500,
+    random_state: int = 0,
+):
     if out_dir is None:
         out_dir = "."
     os.makedirs(out_dir, exist_ok=True)
@@ -263,7 +270,7 @@ def run_shap(df: pd.DataFrame, max_classes: int | None = None, out_dir: str = No
 
     model = RandomForestClassifier(
         n_estimators=300,
-        random_state=0,
+        random_state=random_state,
         n_jobs=-1,
         class_weight="balanced_subsample",
     )
@@ -274,7 +281,7 @@ def run_shap(df: pd.DataFrame, max_classes: int | None = None, out_dir: str = No
     stratify = y if not class_counts.empty and class_counts.min() >= 2 else None
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.25, random_state=0, stratify=stratify
+        X, y, test_size=0.25, random_state=random_state, stratify=stratify
     )
 
     clf.fit(X_train, y_train)
@@ -296,18 +303,29 @@ def run_shap(df: pd.DataFrame, max_classes: int | None = None, out_dir: str = No
     # after training your pipeline `clf`...
     X_test_t = to_dense(clf.named_steps["pre"].transform(X_test))
     rf = clf.named_steps["model"]
-    sample = shap.sample(X_test_t, min(200, len(X_test_t)), random_state=0)
-    explainer = shap.Explainer(rf, sample)  # background = X_test_t (or a sample)
-    sv = explainer(X_test_t)  # shap.Explanation
+    if len(X_test_t) == 0:
+        raise ValueError("Cannot run SHAP on an empty transformed test set.")
+
+    bg_n = min(max(1, background_samples), len(X_test_t))
+    ex_n = min(max(1, explain_samples), len(X_test_t))
+    background = shap.sample(X_test_t, bg_n, random_state=random_state)
+    X_explain = shap.sample(X_test_t, ex_n, random_state=random_state + 1)
+    explainer = shap.Explainer(rf, background)
+    sv = explainer(X_explain)
 
     # save per-class summary plots
     max_disp = min(25, len(feature_names))
-    summary = _write_shap_tables(out_dir, rf.classes_, feature_names, sv, X_test_t, max_disp)
+    summary = _write_shap_tables(out_dir, rf.classes_, feature_names, sv, X_explain, max_disp)
+    summary.update({
+        "n_background_samples": int(bg_n),
+        "n_explain_samples": int(ex_n),
+        "random_state": int(random_state),
+    })
     for ci, cname in enumerate(rf.classes_):
         plt.figure()
         shap.summary_plot(
             sv[:, :, ci].values,  # (n_samples, n_features)
-            X_test_t,
+            X_explain,
             feature_names=feature_names,
             show=False,
             max_display=max_disp,

@@ -1,0 +1,39 @@
+\section{Original CAGE Challenge 4}
+
+CAGE Challenge 4 (CC4) is a public autonomous cyber-defence challenge based on CybORG, the Cyber Operations Research Gym. The original challenge documentation describes CC4 as a return to a defence-industry enterprise scenario and as a multi-agent reinforcement learning task. The official entry point recommends reading the challenge details, following the tutorial sequence, exploring the reference documentation, developing a blue agent, and submitting through the competition platform \cite{cc4_home,cc4_details,cc4_tutorials}.
+
+\subsection{Scenario Overview}
+
+The environment models an enterprise network under adversarial pressure. Five blue agents defend different parts of the network. Red agents attempt to gain access, move laterally, escalate privileges, and eventually affect mission-critical operational services. Green agents represent normal user activity and create service-availability pressure: the blue team must defend without unnecessarily disrupting legitimate work.
+
+The core challenge is therefore not only intrusion response. Blue must trade off:
+\begin{itemize}
+  \item host-level response actions such as \texttt{Analyse}, \texttt{Remove}, \texttt{Restore}, and \texttt{DeployDecoy};
+  \item network-level actions such as \texttt{AllowTraffic} and \texttt{BlockTraffic};
+  \item partial observations per blue agent;
+  \item short inter-agent messages;
+  \item mission phases that change which zones are most important.
+\end{itemize}
+
+\subsection{Official Tutorial Path}
+
+The official tutorial series is structured as a progressive introduction to the environment \cite{cc4_tutorials}. The important parts for this fork are:
+
+\begin{itemize}
+  \item \textbf{Getting started}: installation, first CybORG interaction, and RLlib training setup.
+  \item \textbf{Looking around}: observations, agents, wrappers, visualization, and debugging tools.
+  \item \textbf{Understanding actions}: how actions are represented and executed.
+  \item \textbf{Training and evaluation}: how blue agents are wrapped and evaluated.
+\end{itemize}
+
+This document rewrites those ideas from the perspective of the optimized fork: what a researcher needs to know to run, inspect, optimize, and explain agents in this repository.
+
+\subsection{Relevant Official Interfaces}
+
+The original documentation presents CybORG as the main interface between agents and simulation/emulation backends. In CC4, the relevant public API is Gym-like and multi-agent-inspired: reset the environment, receive observations, submit per-agent actions, receive rewards and termination state \cite{cc4_cyborg_class}. The official wrappers are central because they determine what the blue agents see and how actions are encoded.
+
+For this repository, two wrapper families matter most:
+\begin{itemize}
+  \item tabular wrappers such as \texttt{BlueFlatWrapperV2}, used by the heuristic submission;
+  \item \texttt{EnterpriseMAE}-derived graph wrappers, used by the MARL code.
+\end{itemize}

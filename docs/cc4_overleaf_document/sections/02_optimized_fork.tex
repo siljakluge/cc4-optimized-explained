@@ -1,0 +1,54 @@
+\section{Optimized Fork: Purpose and Changes}
+
+The optimized fork keeps the original CC4 task structure but adds performance improvements, simulation fixes, analysis tooling, heuristic submissions, and a graph-based MARL pipeline. The repository README describes the fork as an optimized research environment for autonomous cyber-defence, with faster training, simulation bug fixes, and strong heuristic baselines.
+
+\subsection{High-Level Additions}
+
+\begin{itemize}
+  \item \textbf{Optimized simulation path}: targeted changes reduce reset and step overhead.
+  \item \textbf{Bug and consistency audits}: local reports identify issues in phishing, FSM fallback behavior, restore semantics, detection events, and observability.
+  \item \textbf{Heuristic blue agents}: the EnterpriseHeuristicAgent family encodes a strong rule-based defence strategy.
+  \item \textbf{MARL pipeline}: the \texttt{marl/} directory implements graph observations, GNN actor-critic networks, PPO training, evaluation, and explainability hooks.
+  \item \textbf{Explainability tooling}: reward decomposition, action logging, SHAP-oriented features, and plotting scripts are wired into evaluation runs.
+\end{itemize}
+
+\subsection{Performance Optimizations}
+
+The local speed report records three waves of optimization. The measured result for the documented run was 87.7 steps/second, compared with 64.7 steps/second before the optimization pass. The report attributes the improvement to changes such as:
+
+\begin{itemize}
+  \item pre-allocated observation buffers in \texttt{BlueFlatWrapper};
+  \item wireless-topology and connected-agent caches in \texttt{SimulationController};
+  \item static constants in \texttt{EnterpriseScenarioGenerator};
+  \item replacing list membership with set/dictionary based lookups for PID and session indexing;
+  \item faster clone paths for process and network-connection objects;
+  \item scenario-pool wiring through the public \texttt{CybORG} constructor.
+\end{itemize}
+
+The optimization goal is behavior preservation. Whenever a performance change is made, benchmark reward should remain stable under the same seed and episode protocol.
+
+\subsection{Simulation Issues Identified}
+
+The simulation audit identifies several issues worth tracking. Some are bugs, some are questionable modelling choices, and some are deliberate simplifications that should be documented.
+
+\begin{longtable}{p{0.18\textwidth}p{0.36\textwidth}p{0.36\textwidth}}
+\toprule
+\textbf{ID} & \textbf{Issue} & \textbf{Impact} \\
+\midrule
+C1 & \texttt{PhishingEmail} uses physical routability rather than the firewall blocking check. & Firewall rules do not affect phishing delivery. This may be realistic as an email abstraction, but the implementation path is not explicit. \\
+C2 & \texttt{PhishingEmail} fallback loop can fail to shrink the candidate list. & Potential non-termination or unintended cross-zone source selection. \\
+C3 & FSM red-agent fallback references a missing method when known hosts are exhausted. & Potential runtime crash in certain dead-end states. \\
+B1 & \texttt{Remove} stops suspicious processes but does not remove files. & Malicious file indicators persist after Remove; Restore is required to clear them. \\
+B2 & Restore can clear pending detection events. & Blue can miss signals on Restore steps. \\
+B3 & Multi-hop red sessions can become orphaned after Restore. & Potential inconsistent red session state. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Open Implementation Check}
+
+This document currently records findings from the local reports. Before publication, each issue should be marked as:
+\begin{itemize}
+  \item \textbf{fixed}: code was changed and regression-tested;
+  \item \textbf{documented design choice}: behavior remains but is explained;
+  \item \textbf{open}: known issue still exists.
+\end{itemize}

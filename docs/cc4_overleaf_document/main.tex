@@ -1,0 +1,48 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{amsmath}
+
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true, linkcolor=blue!50!black, citecolor=blue!50!black, urlcolor=blue!50!black}
+\setlist{noitemsep, topsep=0.4em}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible
+}
+
+\title{CAGE Challenge 4 Optimized Explained\\\large Working Documentation for Environment, Fixes, and Agents}
+\author{CC4 Optimized Explained}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\input{sections/00_current_work}
+\input{sections/01_original_cc4}
+\input{sections/02_optimized_fork}
+\input{sections/03_environment_model}
+\input{sections/04_heuristic_agent}
+\input{sections/05_marl_agent}
+\input{sections/06_workflows}
+\input{sections/07_open_questions}
+\input{sections/08_references_notes}
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

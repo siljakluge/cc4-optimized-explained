@@ -1,0 +1,27 @@
+\section{Current Work and Living Status}
+
+This document is intended as a living Overleaf document for the optimized and explained CAGE Challenge 4 fork. It is not a replacement for the original competition documentation; it is a research-oriented technical companion that records what was changed, what was fixed, how the current agents work, and which open questions remain.
+
+\subsection{Active Work Items}
+
+\begin{longtable}{p{0.26\textwidth}p{0.14\textwidth}p{0.50\textwidth}}
+\toprule
+\textbf{Item} & \textbf{Status} & \textbf{Notes} \\
+\midrule
+Validate current best heuristic version & Open & The repository contains v11a and v11b submission adapters. v11a is documented as the current strongest measured heuristic in the architecture notes; v11b exists as a coordinated messaging variant and should be benchmarked before being described as the best version. \\
+Refresh benchmark table & Open & README, architecture notes, and research-gap notes use different baselines and evaluation sample sizes. Consolidate around one benchmark protocol: seed, episodes, episode length, reward aggregation, and submission path. \\
+Document optimized environment fixes & In progress & Speed optimizations and simulation-audit findings are documented locally. The exact set of fixes that are already implemented should be cross-checked against the code and commit history. \\
+Explain MARL training pipeline & Drafted & This document summarizes the graph-based PPO/GNN approach from \texttt{marl/README.md}, \texttt{marl/models/cage4.py}, and \texttt{marl/wrappers/graph\_wrapper.py}. \\
+Overleaf polish & Open & Add figures, final benchmark plots, glossary, and stable citations once the text is reviewed. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Document Conventions}
+
+\begin{itemize}
+  \item ``Original CC4'' refers to the public CAGE Challenge 4 release and documentation.
+  \item ``Optimized fork'' refers to this repository.
+  \item ``Heuristic agent'' refers to the rule-based EnterpriseHeuristicAgent family.
+  \item ``MARL agent'' refers to the graph-based PPO agent under \texttt{marl/}.
+  \item Performance claims should always include seed, number of episodes, and submission path.
+\end{itemize}

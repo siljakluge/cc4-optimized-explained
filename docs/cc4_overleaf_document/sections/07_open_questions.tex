@@ -1,0 +1,39 @@
+\section{Open Questions and Research Gaps}
+
+The local research-gap notes identify a residual frontier after strong heuristic performance. The important point is not only improving mean reward; it is understanding which limitations are intrinsic to the environment and which are policy weaknesses.
+
+\subsection{DegradeServices Invisibility}
+
+\texttt{DegradeServices} is described as a major source of damage but does not emit direct observation signals. This creates a hidden-state problem: blue must infer degradation from precursor compromise events and noisy service-failure patterns.
+
+Open question: can a recurrent or Bayesian policy estimate host degradation state well enough to improve Restore timing?
+
+\subsection{Inter-Agent Coordination}
+
+Messaging has not yet shown a clear improvement over independent policies plus \texttt{comms\_policy}. This may be an environment property rather than a bad message design.
+
+Open question: what is the theoretical value of communication in this Dec-POMDP, given the one-step delay and sparse upstream dependencies?
+
+\subsection{Phase 0 Optimization}
+
+Phase 0 is long and comparatively expensive because blocking can still carry service-availability cost. The current strategy may under-defend early red setup activity.
+
+Open question: are there Phase-0 blocks or proactive decoy/Restore schedules with positive expected value despite short-term cost?
+
+\subsection{Variance and Tail Risk}
+
+The best heuristic can still have high episode-to-episode variance. Early red targeting and exploit success likely drive bad tails.
+
+Open question: can a risk-aware objective reduce worst-case outcomes without sacrificing too much mean reward?
+
+\subsection{Persistent Signal Tracking}
+
+Some green false positives clear quickly, while red signals may persist. The heuristic uses simple age thresholds.
+
+Open question: can per-signal persistence models reduce response latency while keeping false positives low?
+
+\subsection{Decoy Depletion}
+
+Once a host's decoys have been consumed, later process flags may become more informative. The current heuristic does not fully exploit decoy-depletion state.
+
+Open question: should depleted hosts be replenished immediately, or is the stronger signal value of depletion worth preserving temporarily?
