@@ -28,10 +28,10 @@ except ImportError:
 from models.cage4 import load
 from wrappers.graph_wrapper import GraphWrapper
 
-# Checkpoint prefix is configurable via KEEP_RUN env var; defaults to the
-# debug run shipped in marl/checkpoints/. Point at a trained-run prefix
-# for real evaluation (e.g. KEEP_RUN=my_run).
-_CKPT_DIR = os.path.join(os.path.dirname(__file__), 'checkpoints')
+# Checkpoint directory and prefix are configurable via env vars; defaults to
+# the debug run shipped in marl/checkpoints/. Point KEEP_CKPT_DIR and KEEP_RUN
+# at trained checkpoints for real evaluation.
+_CKPT_DIR = os.environ.get('KEEP_CKPT_DIR', os.path.join(os.path.dirname(__file__), 'checkpoints'))
 _CKPT_PREFIX = os.environ.get('KEEP_RUN', 'test_cpu')
 
 

@@ -1,0 +1,29 @@
+{
+  "agents": {
+    "heuristic_v11a": {
+      "path": "../CybORG/Evaluation/submission",
+      "is_heuristic": true,
+      "description": "EnterpriseHeuristicAgent v11a submission"
+    },
+    "heuristic_v11b": {
+      "path": "../CybORG/Evaluation/submission_v11b",
+      "is_heuristic": true,
+      "description": "EnterpriseHeuristicAgent v11b submission with heuristic SHAP info"
+    },
+    "marl_test_cpu": {
+      "path": "../marl",
+      "is_heuristic": false,
+      "checkpoint_prefix": "test_cpu",
+      "description": "Local MARL smoke-test checkpoints in marl/checkpoints"
+    },
+    "gpu_test": {
+      "path": "../marl",
+      "is_heuristic": false,
+      "checkpoint_prefix": "exp_curriculum_gpu",
+      "env": {
+        "KEEP_CKPT_DIR": "checkpoints"
+      },
+      "description": "MARL GPU test run checkpoints; expects exp_curriculum_gpu-<agent>_checkpoint.pt files"
+    }
+  }
+}

@@ -13,12 +13,21 @@ import pandas as pd
 from SHAP.shap_gnn import infer_feature_group, _save_bar
 
 def _matrix(rows: List[Dict[str, float]]):
-    keys = sorted({k for r in rows for k in r.keys()})
-    X = np.zeros((len(rows), len(keys)), dtype=np.float32)
-    for i, r in enumerate(rows):
-        for j, k in enumerate(keys):
-            X[i, j] = float(r.get(k, 0.0))
-    return X, keys
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return np.zeros((0, 0), dtype=np.float32), []
+
+    for col in df.columns:
+        numeric = pd.to_numeric(df[col], errors="coerce")
+        if numeric.notna().all():
+            df[col] = numeric.astype(np.float32)
+
+    cat_cols = [c for c in df.columns if not pd.api.types.is_numeric_dtype(df[c])]
+    if cat_cols:
+        df = pd.get_dummies(df, columns=cat_cols, dummy_na=False)
+
+    df = df.fillna(0.0).reindex(sorted(df.columns), axis=1)
+    return df.to_numpy(dtype=np.float32), list(df.columns)
 
 def _sanitize(name: str) -> str:
     return "".join(c if c.isalnum() or c in "-._@" else "_" for c in str(name))
@@ -150,12 +159,15 @@ def train_surrogate_and_shap(
     le = LabelEncoder()
     y = le.fit_transform(labels)
 
+    class_counts = pd.Series(y).value_counts()
+    stratify = y if not class_counts.empty and class_counts.min() >= 2 else None
+
     Xtr, Xte, ytr, yte = train_test_split(
         X,
         y,
         test_size=0.2,
         random_state=random_state,
-        stratify=y if len(set(y)) > 1 else None,
+        stratify=stratify,
     )
 
     clf = HistGradientBoostingClassifier(max_depth=6, learning_rate=0.06)
@@ -164,7 +176,14 @@ def train_surrogate_and_shap(
     ypred = clf.predict(Xte)
     acc = accuracy_score(yte, ypred)
     bacc = balanced_accuracy_score(yte, ypred)
-    rep = classification_report(yte, ypred, target_names=list(le.classes_), output_dict=True)
+    rep = classification_report(
+        yte,
+        ypred,
+        labels=np.arange(len(le.classes_)),
+        target_names=list(le.classes_),
+        output_dict=True,
+        zero_division=0,
+    )
 
     surrogate_report = {
         "n_samples": int(len(y)),
