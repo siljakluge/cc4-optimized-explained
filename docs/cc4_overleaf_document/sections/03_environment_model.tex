@@ -18,6 +18,84 @@ CC4 uses five blue agents. Four agents defend a single restricted or operational
 \end{tabular}
 \end{center}
 
+\subsection{Generated Topology}
+
+The scenario generator creates eight enterprise subnets plus the internet
+subnet. Each non-internet subnet contains one router, between three and ten
+user hosts, and between one and six server hosts. The internet subnet contains
+only \texttt{root\_internet\_host\_0}. Host operating systems are Linux variants
+in the current generator. Each non-router host has SSH; operational-zone hosts
+also have \texttt{OTService}; optional services are Apache, MySQL, and SMTP.
+
+\begin{longtable}{p{0.30\textwidth}p{0.56\textwidth}}
+\toprule
+\textbf{Subnet} & \textbf{Primary links in generated topology} \\
+\midrule
+\texttt{internet\_subnet} & connected to restricted A, restricted B, contractor, and public-access routers \\
+\texttt{restricted\_zone\_a\_subnet} & internet and operational zone A \\
+\texttt{operational\_zone\_a\_subnet} & restricted zone A only \\
+\texttt{restricted\_zone\_b\_subnet} & internet and operational zone B \\
+\texttt{operational\_zone\_b\_subnet} & restricted zone B only \\
+\texttt{contractor\_network\_subnet} & internet-facing, with server-level links to restricted A, restricted B, and public access \\
+\texttt{public\_access\_zone\_subnet} & internet, admin network, office network, and contractor-facing paths \\
+\texttt{admin\_network\_subnet} & public-access network and office network \\
+\texttt{office\_network\_subnet} & public-access network and admin network \\
+\bottomrule
+\end{longtable}
+
+\subsection{Agent Action Permissions}
+
+Action permissions are generated centrally in
+\texttt{EnterpriseScenarioGenerator}. Blue agents receive the same action
+classes, but only over their assigned subnets. Red agents receive the same red
+action classes, but only one red agent starts active: the red agent initialized
+in the contractor network. Green agents are created for each generated user
+host.
+
+\begin{longtable}{p{0.16\textwidth}p{0.26\textwidth}p{0.48\textwidth}}
+\toprule
+\textbf{Team} & \textbf{Agents} & \textbf{Action classes} \\
+\midrule
+Blue & \texttt{blue\_agent\_0}--\texttt{blue\_agent\_4} & \texttt{AllowTrafficZone}, \texttt{BlockTrafficZone}, \texttt{Monitor}, \texttt{Analyse}, \texttt{Restore}, \texttt{Remove}, \texttt{DeployDecoy}, \texttt{Sleep} \\
+Red & \texttt{red\_agent\_0}--\texttt{red\_agent\_5} & \texttt{DiscoverRemoteSystems}, \texttt{AggressiveServiceDiscovery}, \texttt{StealthServiceDiscovery}, \texttt{ExploitRemoteService}, \texttt{PrivilegeEscalate}, \texttt{DegradeServices}, \texttt{DiscoverDeception}, \texttt{Impact}, \texttt{Withdraw}, \texttt{Sleep} \\
+Green & one green agent per user host & \texttt{GreenAccessService}, \texttt{GreenLocalWork}, \texttt{Sleep}; when generated with \texttt{SleepAgent}, only \texttt{Sleep} \\
+\bottomrule
+\end{longtable}
+
+\subsection{Action Costs and Durations}
+
+The base action duration is one step and the base action cost is zero. Only a
+small number of actions override these defaults. The table below lists the
+high-level CC4 actions used by the generated scenario, not every low-level
+helper action hidden inside them.
+
+\begin{longtable}{p{0.22\textwidth}p{0.11\textwidth}p{0.11\textwidth}p{0.46\textwidth}}
+\toprule
+\textbf{Action} & \textbf{Team} & \textbf{Duration} & \textbf{Direct cost and effect} \\
+\midrule
+\texttt{Monitor} & Blue & 1 & cost 0; updates observation from local Velociraptor view. \\
+\texttt{Analyse} & Blue & 2 & cost 0 unless blue shaping is enabled; checks a host with density/signature artefacts. \\
+\texttt{Remove} & Blue & 3 & cost 0; kills suspicious non-privileged red processes and, in this fork, removes high-density unsigned malware files. Root sessions survive. \\
+\texttt{Restore} & Blue & 5 & cost -1; reimages the host through \texttt{RestoreFromBackup} and is the reliable eviction path for privileged sessions. \\
+\texttt{DeployDecoy} & Blue & 2 & cost 0; deploys a compatible exploit decoy process such as Apache, Tomcat, Haraka, or Vsftpd. \\
+\texttt{BlockTrafficZone} & Blue & 1 & cost 0 direct; adds a subnet block. Indirect reward impact comes from green access failures and blocked red paths. \\
+\texttt{AllowTrafficZone} & Blue & 1 & cost 0; removes a matching subnet block. \\
+\texttt{DiscoverRemoteSystems} & Red & 1 & cost 0; pingsweeps a target subnet for active host IPs. \\
+\texttt{AggressiveServiceDiscovery} & Red & 1 & cost 0; port scan with detection rate 0.75. \\
+\texttt{StealthServiceDiscovery} & Red & 3 & cost 0; port scan with detection rate 0.25. \\
+\texttt{ExploitRemoteService} & Red & 4 & cost 0; attempts a service exploit against known ports and creates a user-level red shell on success. \\
+\texttt{PrivilegeEscalate} & Red & 2 & cost 0; upgrades a user shell to privileged/root access where possible. \\
+\texttt{DegradeServices} & Red & 2 & cost 0; with privileged access, degrades all active services on the host. \\
+\texttt{DiscoverDeception} & Red & 2 & cost 0; probes for decoy services with true-positive rate 0.5 and false-positive rate 0.1. \\
+\texttt{Impact} & Red & 2 & cost 0; with privileged access, stops \texttt{OTService} and increments host impact count. \\
+\texttt{Withdraw} & Red & 1 & cost 0; removes red sessions from a target host when routed. \\
+\texttt{GreenAccessService} & Green & 1 & cost 0; tries to reach an allowed server service; failure can score ASF in non-\texttt{red\_only} modes. \\
+\texttt{GreenLocalWork} & Green & 1 & cost 0; uses local services, may create false positives, and may trigger phishing via user error; failure can score LWF in non-\texttt{red\_only} modes. \\
+\texttt{Sleep} & All & 1 & cost 0; no operational effect. \\
+\texttt{InvalidAction} & Any & 1 & cost -0.1; returned by invalid action translation or execution paths. \\
+\bottomrule
+\end{longtable}
+
 \subsection{Mission Phases}
 
 Episodes run for 500 steps. The heuristic documentation uses the following phase boundaries:

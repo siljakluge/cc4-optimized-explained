@@ -15,6 +15,55 @@ The core challenge is therefore not only intrusion response. Blue must trade off
   \item mission phases that change which zones are most important.
 \end{itemize}
 
+\subsection{Original Reward Structure}
+
+The current repository implements the CC4 blue-team reward in
+\texttt{CybORG/Shared/BlueRewardMachine.py}. Rewards are scored from the
+blue perspective, so all operational failures and successful red progress are
+negative. The default mode distinguishes three event families:
+
+\begin{itemize}
+  \item \textbf{LWF}: \texttt{GreenLocalWork} failed in the affected subnet.
+  \item \textbf{ASF}: \texttt{GreenAccessService} failed in the affected subnet.
+  \item \textbf{RIA}: red executed \texttt{Impact} successfully in the affected subnet.
+\end{itemize}
+
+\begin{longtable}{llrrr}
+\toprule
+\textbf{Phase} & \textbf{Subnet} & \textbf{LWF} & \textbf{ASF} & \textbf{RIA} \\
+\midrule
+0 & \texttt{public\_access\_zone\_subnet} & -1 & -1 & -3 \\
+0 & \texttt{admin\_network\_subnet} & -1 & -1 & -3 \\
+0 & \texttt{office\_network\_subnet} & -1 & -1 & -3 \\
+0 & \texttt{contractor\_network\_subnet} & 0 & -5 & -5 \\
+0 & \texttt{restricted\_zone\_a\_subnet} & -1 & -3 & -1 \\
+0 & \texttt{operational\_zone\_a\_subnet} & -1 & -1 & -1 \\
+0 & \texttt{restricted\_zone\_b\_subnet} & -1 & -3 & -1 \\
+0 & \texttt{operational\_zone\_b\_subnet} & -1 & -1 & -1 \\
+0 & \texttt{internet\_subnet} & 0 & 0 & 0 \\
+\midrule
+1 & \texttt{public\_access\_zone\_subnet} & -1 & -1 & -3 \\
+1 & \texttt{admin\_network\_subnet} & -1 & -1 & -3 \\
+1 & \texttt{office\_network\_subnet} & -1 & -1 & -3 \\
+1 & \texttt{contractor\_network\_subnet} & 0 & 0 & 0 \\
+1 & \texttt{restricted\_zone\_a\_subnet} & -2 & -1 & -3 \\
+1 & \texttt{operational\_zone\_a\_subnet} & -10 & 0 & -10 \\
+1 & \texttt{restricted\_zone\_b\_subnet} & -1 & -1 & -1 \\
+1 & \texttt{operational\_zone\_b\_subnet} & -1 & -1 & -1 \\
+1 & \texttt{internet\_subnet} & 0 & 0 & 0 \\
+\midrule
+2 & \texttt{public\_access\_zone\_subnet} & -1 & -1 & -3 \\
+2 & \texttt{admin\_network\_subnet} & -1 & -1 & -3 \\
+2 & \texttt{office\_network\_subnet} & -1 & -1 & -3 \\
+2 & \texttt{contractor\_network\_subnet} & 0 & 0 & 0 \\
+2 & \texttt{restricted\_zone\_a\_subnet} & -1 & -3 & -3 \\
+2 & \texttt{operational\_zone\_a\_subnet} & -1 & -1 & -1 \\
+2 & \texttt{restricted\_zone\_b\_subnet} & -2 & -1 & -3 \\
+2 & \texttt{operational\_zone\_b\_subnet} & -10 & 0 & -10 \\
+2 & \texttt{internet\_subnet} & 0 & 0 & 0 \\
+\bottomrule
+\end{longtable}
+
 \subsection{Official Tutorial Path}
 
 The official tutorial series is structured as a progressive introduction to the environment \cite{cc4_tutorials}. The important parts for this fork are:
