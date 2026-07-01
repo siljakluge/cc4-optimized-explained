@@ -76,3 +76,26 @@ python marl/train.py exp_curriculum_gpu \
 \end{lstlisting}
 
 The profile registry is tolerant: profiles missing from the checked-out tree are ignored and remaining weights are renormalized.
+
+\subsection{Registered MARL Submissions}
+
+\texttt{explain.py} can load MARL agents through the shared submission registry instead of requiring manual edits to the command line. A registry entry points to \texttt{marl/submission.py}, sets a checkpoint prefix through \texttt{KEEP\_RUN}, and can optionally redirect checkpoint lookup with \texttt{KEEP\_CKPT\_DIR}. This is useful when downloaded experiment checkpoints live in a top-level \texttt{checkpoints/} directory rather than \texttt{marl/checkpoints/}.
+
+The current registry includes:
+
+\begin{itemize}
+  \item \texttt{marl\_test\_cpu}: local CPU smoke-test checkpoints under the MARL checkpoint layout;
+  \item \texttt{gpu\_test}: planned curriculum GPU checkpoints with prefix \texttt{exp\_curriculum\_gpu} under the top-level \texttt{checkpoints/} directory.
+\end{itemize}
+
+Once the five curriculum checkpoint files are available, the intended explainability command is:
+
+\begin{lstlisting}
+python explain.py \
+  --agent gpu_test \
+  --mode single \
+  --single_profile fsm_default \
+  --max-eps 100 \
+  --episode-length 500 \
+  --shap
+\end{lstlisting}
