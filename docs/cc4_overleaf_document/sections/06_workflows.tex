@@ -1,8 +1,47 @@
 \section{Workflows}
 
+\subsection{Comparable Evaluation Template}
+
+For new experiments, prefer one parameterized command template over editing many
+single-use scripts. The current repository already has this shape in
+\texttt{explain.py}: it accepts seed, episode count, episode length, output
+folder, submission path, reward mode, red-profile selection, and SHAP flags.
+
+\begin{lstlisting}
+python explain.py \
+  --mode single \
+  --strategy single \
+  --single_profile fsm_default \
+  --max-eps 100 \
+  --episode-length 500 \
+  --seed 42 \
+  --phase_reward_mode default \
+  --output Results/EVAL_NAME \
+  --submission-path CybORG/Evaluation/submission
+\end{lstlisting}
+
+The fields that must be fixed before comparing two agents are:
+
+\begin{itemize}
+  \item \texttt{--seed}: controls scenario generation and stochastic choices.
+  \item \texttt{--max-eps}: number of episodes.
+  \item \texttt{--episode-length}: normally 500 for CC4.
+  \item \texttt{--phase\_reward\_mode}: \texttt{default}, \texttt{contractor\_off}, or \texttt{red\_only}.
+  \item \texttt{--single\_profile} or \texttt{--profile\_weights}: red attack distribution.
+  \item \texttt{--submission-path}: exact agent implementation under test.
+  \item \texttt{--output}: run-specific output directory; never reuse for another run.
+\end{itemize}
+
+For reward-decomposition experiments, set the output path and reward mode in the
+same command and keep the generated JSONL reward log with the scalar summary.
+For explainability experiments, add \texttt{--shap} plus fixed
+\texttt{--shap-background-samples}, \texttt{--shap-explain-samples}, and
+\texttt{--shap-random-state}.
+
 \subsection{Heuristic Evaluation}
 
-The repository README gives a direct evaluation pattern:
+The repository README gives a direct evaluation pattern through the official
+submission evaluator:
 
 \begin{lstlisting}
 python -c "
@@ -14,6 +53,23 @@ run_evaluation(Submission, log_path='Results/v11a/', max_eps=100, seed=42)
 \end{lstlisting}
 
 For v11b, adjust the inserted submission path to \texttt{CybORG/Evaluation/submission\_v11b}.
+
+For comparable fork experiments, the equivalent \texttt{explain.py} call is
+usually preferable because it records action logs, reward decomposition, scalar
+summaries, and optional SHAP artefacts in a single run directory:
+
+\begin{lstlisting}
+python explain.py \
+  --mode single \
+  --strategy single \
+  --single_profile fsm_default \
+  --max-eps 100 \
+  --episode-length 500 \
+  --seed 42 \
+  --phase_reward_mode red_only \
+  --output Results/v11b_red_only_fsm_default_seed42 \
+  --submission-path CybORG/Evaluation/submission_v11b
+\end{lstlisting}
 
 \subsection{MARL Smoke Test}
 

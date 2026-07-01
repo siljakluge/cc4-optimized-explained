@@ -12,6 +12,54 @@ The optimized fork keeps the original CC4 task structure but adds performance im
   \item \textbf{Explainability tooling}: reward decomposition, action logging, SHAP-oriented features, and plotting scripts are wired into evaluation runs.
 \end{itemize}
 
+\subsection{Implemented Reward Variants}
+
+The fork adds reward-mode switches through environment variables read by
+\texttt{BlueRewardMachine}. The active mode is selected with
+\texttt{CYBORG\_PHASE\_REWARD\_MODE}; blue action shaping is separately enabled
+with \texttt{CYBORG\_REWARD\_BLUE=1}. This matters for comparable experiments:
+results from different modes should not be mixed in the same benchmark table.
+
+\begin{longtable}{p{0.22\textwidth}p{0.68\textwidth}}
+\toprule
+\textbf{Mode} & \textbf{Semantics} \\
+\midrule
+\texttt{default} & Uses the original LWF, ASF, and RIA phase table. Green failures contribute when \texttt{GreenLocalWork} or \texttt{GreenAccessService} fails. Red contributes only on successful \texttt{Impact}. \\
+\texttt{contractor\_off} & Copies \texttt{default}, then sets \texttt{contractor\_network\_subnet} to zero for LWF, ASF, and RIA in every mission phase. This removes contractor-zone reward pressure. \\
+\texttt{red\_only} & Sets LWF and ASF to zero and keeps red penalties. It also decomposes successful red progress into \texttt{EXP}, \texttt{PRIV}, and \texttt{DEG} terms for exploit, privilege escalation, and service degradation. \\
+\bottomrule
+\end{longtable}
+
+In \texttt{red\_only}, the extra red terms are derived directly from each
+subnet's RIA value:
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Term} & \textbf{Triggered by} & \textbf{Value} \\
+\midrule
+\texttt{EXP} & successful \texttt{ExploitRemoteService} & $0.7 \times \texttt{RIA}$ \\
+\texttt{PRIV} & successful \texttt{PrivilegeEscalate} & $0.8 \times \texttt{RIA}$ \\
+\texttt{DEG} & successful \texttt{DegradeServices} & $0.6 \times \texttt{RIA}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+When \texttt{CYBORG\_REWARD\_BLUE=1}, successful blue \texttt{Analyse} actions
+receive a small shaping reward of $+0.1$. In the default repository state this
+flag is off, so blue actions do not normally add positive reward.
+
+\subsection{Reward Logging}
+
+The fork logs reward decomposition to JSON lines from the reward machine. The
+log path defaults to \texttt{reward\_log.jsonl} and can be changed with
+\texttt{CYBORG\_REWARD\_LOG\_PATH}. Optional metadata fields are read from
+\texttt{CYBORG\_ATTACK\_PROFILE} and \texttt{CYBORG\_RUN\_TAG}. Each entry
+contains episode, step, mission phase, per-subnet reward components, and total
+reward. This is the preferred source for reward-decomposition plots and for
+checking whether a benchmark was dominated by green failures, exploit progress,
+privilege escalation, degradation, or final impact.
+
 \subsection{Performance Optimizations}
 
 The local speed report records three waves of optimization. The measured result for the documented run was 87.7 steps/second, compared with 64.7 steps/second before the optimization pass. The report attributes the improvement to changes such as:
@@ -38,7 +86,7 @@ The simulation audit identifies several issues worth tracking. Some are bugs, so
 C1 & \texttt{PhishingEmail} uses physical routability rather than the firewall blocking check. & Firewall rules do not affect phishing delivery. This may be realistic as an email abstraction, but the implementation path is not explicit. \\
 C2 & \texttt{PhishingEmail} fallback loop can fail to shrink the candidate list. & Potential non-termination or unintended cross-zone source selection. \\
 C3 & FSM red-agent fallback references a missing method when known hosts are exhausted. & Potential runtime crash in certain dead-end states. \\
-B1 & \texttt{Remove} stops suspicious processes but does not remove files. & Malicious file indicators persist after Remove; Restore is required to clear them. \\
+B1 & Historical notes said \texttt{Remove} stopped suspicious processes but did not remove files. & In the current fork implementation, \texttt{Remove} also removes high-density unsigned malware files. Restore is still required to fully evict privileged/root red sessions. \\
 B2 & Restore can clear pending detection events. & Blue can miss signals on Restore steps. \\
 B3 & Multi-hop red sessions can become orphaned after Restore. & Potential inconsistent red session state. \\
 \bottomrule

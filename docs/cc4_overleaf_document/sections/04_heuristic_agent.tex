@@ -11,7 +11,7 @@ Because local documents report mixed results, this draft treats v11a as the best
 The heuristic is deterministic. At every step, it evaluates a priority cascade and executes the first valid action. There is no learned value function and no stochastic exploration. The strength of the agent comes from encoding environment-specific timing facts:
 
 \begin{itemize}
-  \item \textbf{Restore-only response}: Remove is too slow against privilege escalation and does not remove malicious files. Restore is the reliable eviction path.
+  \item \textbf{Restore-biased response}: \texttt{Remove} now clears high-density unsigned malware files in this fork, but it still cannot evict privileged/root red sessions. \texttt{Restore} remains the reliable eviction path after privilege escalation.
   \item \textbf{Decoy saturation}: each host is filled with up to three decoys, increasing the chance that blind red exploitation wastes time.
   \item \textbf{Malicious-file detection}: high-density unsigned files are treated as strong evidence of compromise.
   \item \textbf{Flag-age filtering}: transient process flags are delayed to avoid green false positives.
