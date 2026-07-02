@@ -50,3 +50,17 @@ The heuristic submission wraps the inner agent with a \texttt{BlueFlatWrapperV2}
   \item storing outgoing messages from each agent;
   \item injecting those messages into the next environment step, because the official evaluator does not pass them directly.
 \end{itemize}
+
+\subsection{SHAP Feature Logging}
+
+The v11b submission adapter now emits SHAP-oriented metadata through the wrapper \texttt{info} dictionary. For each blue agent step, the metadata includes the chosen action type and a semantic feature dictionary. This makes the heuristic explainability path structurally closer to the MARL path, which already emits \texttt{shap\_features} from the graph wrapper.
+
+The heuristic SHAP pipeline trains a surrogate classifier on these recorded state-action rows. Categorical fields, such as previous action labels, are one-hot encoded before surrogate training. The output tables mirror the MARL SHAP output names:
+
+\begin{itemize}
+  \item \texttt{mean\_abs\_shap\_by\_feature.csv};
+  \item \texttt{mean\_abs\_shap\_by\_feature\_group.csv};
+  \item per-action-class feature and feature-group tables.
+\end{itemize}
+
+This does not make heuristic and MARL explanations mathematically identical, because they still use different policy representations and surrogate models. It does make the final CSV schema comparable enough to inspect feature and feature-group importance under the same red profile, seed, episode count, and SHAP sampling configuration.

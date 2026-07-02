@@ -6,9 +6,13 @@ For new experiments, prefer one parameterized command template over editing many
 single-use scripts. The current repository already has this shape in
 \texttt{explain.py}: it accepts seed, episode count, episode length, output
 folder, submission path, reward mode, red-profile selection, and SHAP flags.
+Registered agents should be selected with \texttt{--agent NAME} when possible,
+because the registry captures the submission path, heuristic/MARL type, checkpoint
+prefix, and checkpoint directory settings in one place.
 
 \begin{lstlisting}
 python explain.py \
+  --agent heuristic_v11b \
   --mode single \
   --strategy single \
   --single_profile fsm_default \
@@ -16,8 +20,7 @@ python explain.py \
   --episode-length 500 \
   --seed 42 \
   --phase_reward_mode default \
-  --output Results/EVAL_NAME \
-  --submission-path CybORG/Evaluation/submission
+  --output Results/EVAL_NAME
 \end{lstlisting}
 
 The fields that must be fixed before comparing two agents are:
@@ -28,9 +31,15 @@ The fields that must be fixed before comparing two agents are:
   \item \texttt{--episode-length}: normally 500 for CC4.
   \item \texttt{--phase\_reward\_mode}: \texttt{default}, \texttt{contractor\_off}, or \texttt{red\_only}.
   \item \texttt{--single\_profile} or \texttt{--profile\_weights}: red attack distribution.
-  \item \texttt{--submission-path}: exact agent implementation under test.
+  \item \texttt{--agent}: exact registered agent implementation under test.
   \item \texttt{--output}: run-specific output directory; never reuse for another run.
 \end{itemize}
+
+The available registry entries can be inspected with:
+
+\begin{lstlisting}
+python explain.py --list-agents
+\end{lstlisting}
 
 For reward-decomposition experiments, set the output path and reward mode in the
 same command and keep the generated JSONL reward log with the scalar summary.
@@ -60,6 +69,7 @@ summaries, and optional SHAP artefacts in a single run directory:
 
 \begin{lstlisting}
 python explain.py \
+  --agent heuristic_v11b \
   --mode single \
   --strategy single \
   --single_profile fsm_default \
@@ -67,8 +77,7 @@ python explain.py \
   --episode-length 500 \
   --seed 42 \
   --phase_reward_mode red_only \
-  --output Results/v11b_red_only_fsm_default_seed42 \
-  --submission-path CybORG/Evaluation/submission_v11b
+  --output Results/v11b_red_only_fsm_default_seed42
 \end{lstlisting}
 
 \subsection{MARL Smoke Test}
@@ -90,17 +99,54 @@ The explainability pipeline can run a short single-profile pass:
 
 \begin{lstlisting}
 python explain.py \
+  --agent marl_test_cpu \
   --mode single \
   --strategy single \
   --single_profile fsm_default \
   --max-eps 1 \
   --episode-length 5 \
-  --non-heuristic \
   --shap \
   --seed 1337 \
   --phase_reward_mode red_only \
-  --output SmokeResults/FULL_RUN \
-  --submission-path .
+  --output SmokeResults/FULL_RUN
 \end{lstlisting}
 
 Expected outputs include reward logs, scalar reward summaries, action logs, and SHAP analysis folders.
+
+\subsection{Large SHAP Sampling Runs}
+
+Full CC4 explainability runs can be large: 100 episodes with 500 steps produce
+50,000 environment steps for a single red profile. Computing model-agnostic SHAP
+values on every recorded row is unnecessarily expensive. The current
+\texttt{explain.py} implementation therefore separates evaluation size from SHAP
+sample size:
+
+\begin{itemize}
+  \item \texttt{--shap-episode-stride}: keep SHAP rows only from every $N$th episode;
+  \item \texttt{--shap-step-stride}: keep SHAP rows only from every $N$th step;
+  \item \texttt{--shap-max-rows-per-profile}: deterministic cap before surrogate training and SHAP.
+\end{itemize}
+
+Example command for a full heuristic evaluation with bounded SHAP cost:
+
+\begin{lstlisting}
+python explain.py \
+  --agent heuristic_v11b \
+  --mode single \
+  --single_profile fsm_default \
+  --max-eps 100 \
+  --episode-length 500 \
+  --seed 1337 \
+  --shap \
+  --shap-step-stride 10 \
+  --shap-max-rows-per-profile 2000 \
+  --shap-background-samples 50 \
+  --shap-explain-samples 100 \
+  --output Results/shap_large_sampling
+\end{lstlisting}
+
+In a local validation run, this command evaluated all 100 episodes and logged
+50,000 action/reward rows. The final SHAP phase used 2,000 sampled training rows
+and 100 explained samples, completing in under one minute after the simulation
+finished. The resulting SHAP folders contain both per-action plots and comparable
+CSV summaries by feature and feature group.

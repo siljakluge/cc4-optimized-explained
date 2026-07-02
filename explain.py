@@ -8,6 +8,25 @@ from pathlib import Path
 from dataclasses import dataclass
 from time import perf_counter
 
+REPO_ROOT = Path(__file__).resolve().parent
+SUBMISSIONS_DIR = REPO_ROOT / "submissions"
+SUBMISSION_REGISTRY = SUBMISSIONS_DIR / "registry.json"
+
+if __name__ == "__main__" and "--list-agents" in sys.argv:
+    if not SUBMISSION_REGISTRY.exists():
+        print(f"No registered agents found in {SUBMISSION_REGISTRY}.")
+        raise SystemExit(0)
+    with SUBMISSION_REGISTRY.open("r", encoding="utf-8") as f:
+        registry = json.load(f).get("agents", {})
+    print("Registered submission agents:")
+    for name, cfg in sorted(registry.items()):
+        kind = "heuristic" if cfg.get("is_heuristic") else "marl"
+        path = cfg.get("path", "")
+        prefix = cfg.get("checkpoint_prefix")
+        suffix = f", checkpoint_prefix={prefix}" if prefix else ""
+        print(f"  {name:20s} {kind:9s} path={path}{suffix}")
+    raise SystemExit(0)
+
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
@@ -88,6 +107,51 @@ def load_submission(source: str):
         f"No submission.py found at {source_path}, {source_path / 'submission.py'}, "
         f"or {source_path / 'marl' / 'submission.py'}"
     )
+
+def load_submission_registry(registry_path: Path = SUBMISSION_REGISTRY) -> Dict[str, Dict[str, Any]]:
+    if not registry_path.exists():
+        return {}
+    with registry_path.open("r", encoding="utf-8") as f:
+        registry = json.load(f)
+    agents = registry.get("agents", registry)
+    if not isinstance(agents, dict):
+        raise ValueError(f"Invalid submissions registry at {registry_path}: expected an 'agents' object.")
+    return agents
+
+def list_registered_agents(registry: Dict[str, Dict[str, Any]]) -> None:
+    if not registry:
+        print(f"No registered agents found in {SUBMISSION_REGISTRY}.")
+        return
+    print("Registered submission agents:")
+    for name, cfg in sorted(registry.items()):
+        kind = "heuristic" if cfg.get("is_heuristic") else "marl"
+        path = cfg.get("path", "")
+        prefix = cfg.get("checkpoint_prefix")
+        suffix = f", checkpoint_prefix={prefix}" if prefix else ""
+        print(f"  {name:20s} {kind:9s} path={path}{suffix}")
+
+def resolve_submission_config(agent_name: str, registry: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    try:
+        cfg = dict(registry[agent_name])
+    except KeyError as exc:
+        available = ", ".join(sorted(registry)) or "<none>"
+        raise ValueError(f"Unknown --agent '{agent_name}'. Available agents: {available}") from exc
+
+    if "path" not in cfg:
+        raise ValueError(f"Agent '{agent_name}' in {SUBMISSION_REGISTRY} has no 'path'.")
+
+    cfg["name"] = agent_name
+    cfg["path"] = str((SUBMISSIONS_DIR / cfg["path"]).resolve())
+    return cfg
+
+def apply_submission_config(cfg: Dict[str, Any]) -> None:
+    for key, value in cfg.get("env", {}).items():
+        if str(key).endswith("_DIR") and not os.path.isabs(str(value)):
+            value = str((REPO_ROOT / str(value)).resolve())
+        os.environ[str(key)] = str(value)
+    checkpoint_prefix = cfg.get("checkpoint_prefix")
+    if checkpoint_prefix:
+        os.environ["KEEP_RUN"] = str(checkpoint_prefix)
 
 # ----------------------------
 # Red profiles (same as evaluate.py)
@@ -214,6 +278,34 @@ def build_shap_dataset_all_features(infos, fill_value=0):
 
     return df
 
+def _sample_sequence(
+    values: List[Any],
+    max_items: Optional[int],
+    random_state: int,
+) -> List[Any]:
+    if max_items is None or max_items <= 0 or len(values) <= max_items:
+        return values
+    rng = random.Random(random_state)
+    idx = sorted(rng.sample(range(len(values)), max_items))
+    return [values[i] for i in idx]
+
+def _filter_shap_steps(
+    policy_rows: List[Any],
+    infos: List[Dict[str, Any]],
+    *,
+    episode_idx: int,
+    episode_stride: int,
+    step_stride: int,
+) -> Tuple[List[Any], List[Dict[str, Any]]]:
+    if episode_stride > 1 and episode_idx % episode_stride != 0:
+        return [], []
+    if step_stride <= 1:
+        return policy_rows, infos
+    return policy_rows[::step_stride], infos[::step_stride]
+
+def _stable_name_offset(name: str) -> int:
+    return sum((idx + 1) * ord(ch) for idx, ch in enumerate(str(name))) % 100_000
+
 # ----------------------------
 # Env builder
 # ----------------------------
@@ -328,12 +420,20 @@ def run_one_episode_and_log(
 
         # ---- heuristic SHAP ----
         if is_heuristic and shap:
-            for agent_name, agent in submission.AGENTS.items():
-                if not hasattr(agent, "info") or len(agent.info) == 0:
-                    continue
-                step_info = agent.info[-1]
-                if "Predicates" in step_info and "ActionClass" in step_info:
-                    policy_rows.append((step_info["Predicates"], step_info["ActionClass"]))
+            used_info_features = False
+            for agent_name, step_info in info.items():
+                sf = step_info.get("shap_features") if isinstance(step_info, dict) else None
+                y = step_info.get("chosen_action_type") if isinstance(step_info, dict) else None
+                if sf and y is not None:
+                    policy_rows.append((sf, str(y)))
+                    used_info_features = True
+            if not used_info_features:
+                for agent_name, agent in submission.AGENTS.items():
+                    if not hasattr(agent, "info") or len(agent.info) == 0:
+                        continue
+                    step_info = agent.info[-1]
+                    if "Predicates" in step_info and "ActionClass" in step_info:
+                        policy_rows.append((step_info["Predicates"], step_info["ActionClass"]))
 
         # termination?
         done = {
@@ -360,6 +460,9 @@ def run_explainability_profiles(
     shap_background_samples: int = 200,
     shap_explain_samples: int = 500,
     shap_random_state: int = 42,
+    shap_episode_stride: int = 1,
+    shap_step_stride: int = 1,
+    shap_max_rows_per_profile: Optional[int] = None,
 
     # profile selection mode
     mode: str = "single",                 # single | sweep
@@ -516,6 +619,13 @@ def run_explainability_profiles(
                             continue
                         totals_by_profile.setdefault(chosen, []).append(r)
                         if shap:
+                            pol_rows, infos = _filter_shap_steps(
+                                pol_rows,
+                                infos,
+                                episode_idx=epi,
+                                episode_stride=shap_episode_stride,
+                                step_stride=shap_step_stride,
+                            )
                             shap_policy_rows[chosen].extend(pol_rows)
                             shap_infos[chosen].extend(infos)
 
@@ -553,6 +663,13 @@ def run_explainability_profiles(
                             continue
                         totals_by_profile[prof].append(r)
                         if shap:
+                            pol_rows, infos = _filter_shap_steps(
+                                pol_rows,
+                                infos,
+                                episode_idx=epi,
+                                episode_stride=shap_episode_stride,
+                                step_stride=shap_step_stride,
+                            )
                             shap_policy_rows[prof].extend(pol_rows)
                             shap_infos[prof].extend(infos)
 
@@ -593,6 +710,13 @@ def run_explainability_profiles(
                 continue
             totals_by_profile.setdefault(prof, []).append(r)
             if shap:
+                pol_rows, infos = _filter_shap_steps(
+                    pol_rows,
+                    infos,
+                    episode_idx=epi,
+                    episode_stride=shap_episode_stride,
+                    step_stride=shap_step_stride,
+                )
                 shap_policy_rows[prof].extend(pol_rows)
                 shap_infos[prof].extend(infos)
 
@@ -625,6 +749,9 @@ def run_explainability_profiles(
                     "strategy": strategy if mode == "single" else None,
                     "profile": prof,
                     "profile_weights": weights if (mode == "single" and strategy == "mixture") else None,
+                    "shap_episode_stride": shap_episode_stride if shap else None,
+                    "shap_step_stride": shap_step_stride if shap else None,
+                    "shap_max_rows_per_profile": shap_max_rows_per_profile if shap else None,
                 },
                 "time": {"start": str(start), "end": str(end), "elapsed": str(end - start)},
                 "reward_scalar": {
@@ -640,8 +767,13 @@ def run_explainability_profiles(
         if shap and is_heuristic:
             out_dir_shap = prof_dir / "SHAPAnalysis"
             ensure_dir(out_dir_shap)
-            summary = train_surrogate_and_shap(
+            sampled_policy_rows = _sample_sequence(
                 shap_policy_rows.get(prof, []),
+                shap_max_rows_per_profile,
+                shap_random_state + _stable_name_offset(prof),
+            )
+            summary = train_surrogate_and_shap(
+                sampled_policy_rows,
                 out_dir=str(out_dir_shap),
                 background_samples=shap_background_samples,
                 explain_samples=shap_explain_samples,
@@ -652,7 +784,12 @@ def run_explainability_profiles(
         elif shap and (not is_heuristic):
             out_dir_shap = prof_dir / "SHAPAnalysis"
             ensure_dir(out_dir_shap)
-            df = build_shap_dataset_all_features(shap_infos.get(prof, []))
+            sampled_infos = _sample_sequence(
+                shap_infos.get(prof, []),
+                shap_max_rows_per_profile,
+                shap_random_state + _stable_name_offset(prof),
+            )
+            df = build_shap_dataset_all_features(sampled_infos)
             if not df.empty and "prev_action_success" in df.columns:
                 df["prev_action_success"] = pd.to_numeric(df["prev_action_success"], errors="coerce").fillna(-1)
 
@@ -697,13 +834,43 @@ if __name__ == "__main__":
     parser.add_argument("--shap-background-samples", type=int, default=200)
     parser.add_argument("--shap-explain-samples", type=int, default=500)
     parser.add_argument("--shap-random-state", type=int, default=42)
+    parser.add_argument(
+        "--shap-episode-stride",
+        type=int,
+        default=1,
+        help="Collect SHAP rows only from every Nth episode. Keeps large runs fast and deterministic.",
+    )
+    parser.add_argument(
+        "--shap-step-stride",
+        type=int,
+        default=1,
+        help="Collect SHAP rows only from every Nth step within sampled episodes.",
+    )
+    parser.add_argument(
+        "--shap-max-rows-per-profile",
+        type=int,
+        default=None,
+        help="Optional cap on rows passed into the SHAP surrogate per red profile.",
+    )
 
     parser.add_argument("--output", type=str, default=os.path.abspath("Results"))
-    parser.add_argument("--submission-path", type=str, default=os.path.abspath(""))
+    parser.add_argument(
+        "--agent",
+        type=str,
+        default=None,
+        help="Registered submission name from submissions/registry.json, e.g. heuristic_v11b or gpu_test.",
+    )
+    parser.add_argument(
+        "--list-agents",
+        action="store_true",
+        help="List registered submissions and exit.",
+    )
+    parser.add_argument("--submission-path", type=str, default=None)
 
-    parser.add_argument("--is-heuristic", action="store_true")
-    parser.add_argument("--non-heuristic", dest="is_heuristic", action="store_false")
-    parser.set_defaults(is_heuristic=False)
+    heuristic_group = parser.add_mutually_exclusive_group()
+    heuristic_group.add_argument("--is-heuristic", dest="is_heuristic", action="store_true")
+    heuristic_group.add_argument("--non-heuristic", dest="is_heuristic", action="store_false")
+    parser.set_defaults(is_heuristic=None)
     parser.add_argument("--phase_reward_mode", default="default",
                     choices=["default", "contractor_off", "red_only"])
     parser.add_argument("--reward_blue", action="store_true")
@@ -719,13 +886,33 @@ if __name__ == "__main__":
     os.environ["CYBORG_PHASE_REWARD_MODE"] = args.phase_reward_mode
     os.environ["CYBORG_REWARD_BLUE"] = "1" if args.reward_blue else "0"
 
-    submission = load_submission(args.submission_path)
+    registry = load_submission_registry()
+    if args.list_agents:
+        list_registered_agents(registry)
+        raise SystemExit(0)
+
+    submission_path = args.submission_path
+    registry_cfg: Dict[str, Any] = {}
+    if args.agent:
+        registry_cfg = resolve_submission_config(args.agent, registry)
+        apply_submission_config(registry_cfg)
+        submission_path = registry_cfg["path"]
+    elif submission_path is None:
+        submission_path = str(REPO_ROOT)
+
+    submission = load_submission(submission_path)
     if isinstance(submission, type):
         submission = submission()
 
+    is_heuristic = (
+        bool(registry_cfg.get("is_heuristic", False))
+        if args.is_heuristic is None
+        else args.is_heuristic
+    )
+
     os.makedirs(args.output, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d-%H%M")
-    agent_type = submission.NAME
+    agent_type = args.agent or submission.NAME
     run_dir = os.path.join(args.output, f"{agent_type}_{ts}")
     rmkdir(run_dir)
 
@@ -738,10 +925,13 @@ if __name__ == "__main__":
         seed=args.seed,
         episode_length=args.episode_length,
         shap=args.shap,
-        is_heuristic=args.is_heuristic,
+        is_heuristic=is_heuristic,
         shap_background_samples=args.shap_background_samples,
         shap_explain_samples=args.shap_explain_samples,
         shap_random_state=args.shap_random_state,
+        shap_episode_stride=max(1, args.shap_episode_stride),
+        shap_step_stride=max(1, args.shap_step_stride),
+        shap_max_rows_per_profile=args.shap_max_rows_per_profile,
         mode=args.mode,
         strategy=args.strategy,
         single_profile=args.single_profile,
@@ -753,7 +943,6 @@ if __name__ == "__main__":
   --mode sweep \
   --max-eps 10 \
   --episode-length 100 \
-  --non-heuristic \
+  --agent gpu_test \
   --seed 1337 \
-  --phase_reward_mode red_only \
-  --submission-path ."""
+  --phase_reward_mode red_only"""

@@ -12,6 +12,8 @@ Validate current best heuristic version & Open & The repository contains v11a an
 Refresh benchmark table & Open & README, architecture notes, and research-gap notes use different baselines and evaluation sample sizes. Consolidate around one benchmark protocol: seed, episodes, episode length, reward aggregation, and submission path. \\
 Document optimized environment fixes & In progress & Speed optimizations and simulation-audit findings are documented locally. The exact set of fixes that are already implemented should be cross-checked against the code and commit history. \\
 Explain MARL training pipeline & Drafted & This document summarizes the graph-based PPO/GNN approach from \texttt{marl/README.md}, \texttt{marl/models/cage4.py}, and \texttt{marl/wrappers/graph\_wrapper.py}. \\
+Unify submission selection & Implemented & \texttt{explain.py} can now load registered agents with \texttt{--agent NAME} from \texttt{submissions/registry.json}. Current entries include \texttt{heuristic\_v11a}, \texttt{heuristic\_v11b}, \texttt{marl\_test\_cpu}, and \texttt{gpu\_test}. \\
+Make SHAP runs scalable & Implemented & Large explainability runs can evaluate all episodes while sampling SHAP rows through \texttt{--shap-episode-stride}, \texttt{--shap-step-stride}, and \texttt{--shap-max-rows-per-profile}. A 100 episode by 500 step heuristic run completed with 50,000 logged steps and a capped SHAP phase. \\
 Overleaf polish & Open & Add figures, final benchmark plots, glossary, and stable citations once the text is reviewed. \\
 \bottomrule
 \end{longtable}
@@ -23,5 +25,6 @@ Overleaf polish & Open & Add figures, final benchmark plots, glossary, and stabl
   \item ``Optimized fork'' refers to this repository.
   \item ``Heuristic agent'' refers to the rule-based EnterpriseHeuristicAgent family.
   \item ``MARL agent'' refers to the graph-based PPO agent under \texttt{marl/}.
+  \item Registered submissions should be referenced by their \texttt{--agent} name when possible.
   \item Performance claims should always include seed, number of episodes, and submission path.
 \end{itemize}
