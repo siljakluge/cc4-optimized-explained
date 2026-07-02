@@ -5,6 +5,16 @@
       "is_heuristic": true,
       "description": "EnterpriseHeuristicAgent v11a submission"
     },
+    "enterprise11a": {
+      "path": "../CybORG/Evaluation/submission",
+      "is_heuristic": true,
+      "description": "Alias for EnterpriseHeuristicAgent v11a submission"
+    },
+    "enterprise_v11a": {
+      "path": "../CybORG/Evaluation/submission",
+      "is_heuristic": true,
+      "description": "Alias for EnterpriseHeuristicAgent v11a submission"
+    },
     "heuristic_v11b": {
       "path": "../CybORG/Evaluation/submission_v11b",
       "is_heuristic": true,
