@@ -42,11 +42,66 @@ def _iter_strings(obj):
         yield str(obj).lower()
 
 
-def extract_shap_features(dict_obs: dict, msg_matrix: np.ndarray | None = None) -> dict:
+def _has_property(item: dict, keyword: str) -> bool:
+    props = item.get("Properties") or item.get("properties") or []
+    return any(keyword.lower() in str(prop).lower() for prop in props)
+
+
+def _host_observation_counts(dict_obs: dict) -> dict[str, int]:
+    counts = {
+        "host_n_visible": 0,
+        "host_n_sessions": 0,
+        "host_n_red_sessions": 0,
+        "host_n_root_sessions": 0,
+        "host_n_processes": 0,
+        "host_n_connections": 0,
+        "host_n_decoy_processes": 0,
+        "host_n_suspicious_files": 0,
+    }
+    for key, host_obs in dict_obs.items():
+        if key in {"success", "action", "message"} or not isinstance(host_obs, dict):
+            continue
+        counts["host_n_visible"] += 1
+
+        sessions = host_obs.get("Sessions") or []
+        counts["host_n_sessions"] += len(sessions)
+        for session in sessions:
+            agent = str(session.get("agent", "")).lower()
+            username = str(session.get("username", "")).lower()
+            if "red" in agent:
+                counts["host_n_red_sessions"] += 1
+            if username == "root" or "root" in str(session.get("Type", "")).lower():
+                counts["host_n_root_sessions"] += 1
+
+        processes = host_obs.get("Processes") or []
+        counts["host_n_processes"] += len(processes)
+        counts["host_n_decoy_processes"] += sum(1 for proc in processes if _has_property(proc, "decoy"))
+        counts["host_n_connections"] += sum(len(proc.get("Connections") or []) for proc in processes)
+
+        files = host_obs.get("Files") or host_obs.get("file") or []
+        for file_obs in files:
+            density = file_obs.get("Density", file_obs.get("density", 0))
+            signed = file_obs.get("Signed", file_obs.get("signed", True))
+            try:
+                suspicious = float(density) >= 0.9 and not bool(signed)
+            except Exception:
+                suspicious = "density" in str(file_obs).lower() and "signed" in str(file_obs).lower()
+            counts["host_n_suspicious_files"] += int(suspicious)
+    return counts
+
+
+def extract_shap_features(
+    dict_obs: dict,
+    msg_matrix: np.ndarray | None = None,
+    mission_phase: int | None = None,
+) -> dict:
     feats = {
         "prev_action_success": _ternary_to_int(dict_obs.get("success")),
         "prev_action": _action_type(dict_obs.get("action")),
     }
+    if mission_phase is not None:
+        feats["mission_phase"] = int(mission_phase)
+    feats.update(_host_observation_counts(dict_obs))
 
     strings = list(_iter_strings(dict_obs))
 
@@ -57,6 +112,9 @@ def extract_shap_features(dict_obs: dict, msg_matrix: np.ndarray | None = None) 
     feats["has_cmd_sh"] = has_kw("cmd.sh", "cmd_sh", "cmdsh")
     feats["has_escalate"] = has_kw("escalate", "privilege escalation", "privesc", "sudo")
     feats["has_decoy_exploit"] = has_kw("decoy", "exploit", "rfi")
+    feats["has_connection_event"] = has_kw("connection", "remote address", "local port")
+    feats["has_process_event"] = has_kw("process", "pid", "parent_pid")
+    feats["has_malware_file"] = has_kw("density", "signed", "malware")
 
     if msg_matrix is not None:
         m = np.asarray(msg_matrix)
@@ -207,7 +265,11 @@ class HeuristicEnv(BlueFlatWrapperV2):
                 shap_info[agent_name] = {
                     "chosen_action_type": agent._action_class(actions.get(agent_name)),
                     "chosen_action_str": str(actions.get(agent_name)),
-                    "shap_features": extract_shap_features(dict_obs, msg),
+                    "shap_features": extract_shap_features(
+                        dict_obs,
+                        msg,
+                        mission_phase=getattr(self.env.environment_controller.state, "mission_phase", None),
+                    ),
                 }
             except Exception:
                 continue

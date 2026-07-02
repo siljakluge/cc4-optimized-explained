@@ -14,22 +14,22 @@ from pathlib import Path
 
 def infer_feature_group(feature_name: str) -> str:
     name = str(feature_name).lower()
-    if "prev_action" in name or name.startswith("action") or "_action" in name:
-        return "previous_action"
-    if "success" in name or "fail" in name:
-        return "action_outcome"
-    if "comprom" in name or "session" in name or "privilege" in name or "root" in name or "user" in name:
-        return "host_compromise"
-    if "service" in name or "process" in name or "proc" in name or "conn" in name:
-        return "service_process"
-    if "subnet" in name or "zone" in name or "network" in name or "reachable" in name:
-        return "network_reachability"
-    if "decoy" in name or "decept" in name:
-        return "deception"
     if "step" in name or "time" in name or "phase" in name:
         return "mission_phase"
-    if "host" in name:
-        return "host_state"
+    if "prev_action" in name or name.startswith("action") or "_action" in name or "success" in name or "fail" in name:
+        return "action_context"
+    if name.startswith("msg_") or "message" in name or "peer" in name or "upstream" in name:
+        return "peer_message"
+    if "decoy" in name or "decept" in name:
+        return "decoy_surface"
+    if "blocked" in name or "comms" in name or "traffic" in name or "reachable" in name:
+        return "traffic_policy"
+    if "comprom" in name or "session" in name or "privilege" in name or "root" in name or "user" in name:
+        return "host_threat"
+    if "service" in name or "process" in name or "proc" in name or "conn" in name or "mal" in name or "host" in name:
+        return "host_threat"
+    if "subnet" in name or "zone" in name or "network" in name:
+        return "traffic_policy"
     return "other"
 
 

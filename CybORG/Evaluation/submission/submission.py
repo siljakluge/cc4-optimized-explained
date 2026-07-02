@@ -28,6 +28,7 @@ from CybORG import CybORG
 from CybORG.Agents import BaseAgent
 from CybORG.Agents.Wrappers import BlueFlatWrapperV2
 from CybORG.Agents.SimpleAgents.EnterpriseHeuristicAgentV11a import EnterpriseHeuristicAgentV11a
+from CybORG.Evaluation.submission_v11b.submission import extract_message_matrix, extract_shap_features
 
 
 class HeuristicSubmissionAgent(BaseAgent):
@@ -43,6 +44,11 @@ class HeuristicSubmissionAgent(BaseAgent):
         self._inner = EnterpriseHeuristicAgentV11a(agent_name=agent_name)
         self._env: "HeuristicEnv | None" = None
         self._last_message: "np.ndarray | None" = None
+        self._info: list[dict] = []
+
+    @property
+    def info(self):
+        return self._info
 
     # Called by evaluation.py each step
     def get_action(self, observation, action_space=None):
@@ -54,7 +60,25 @@ class HeuristicSubmissionAgent(BaseAgent):
                 pass
         action_idx, msg = self._inner.get_action(observation, mask)
         self._last_message = msg  # stored for HeuristicEnv.step() to collect
+        self._info.append({
+            "Predicates": self._observation_features(observation),
+            "ActionClass": self._action_class(action_idx),
+        })
         return action_idx
+
+    def _action_class(self, action_idx: int) -> str:
+        if self._env is None:
+            return str(action_idx)
+        try:
+            label = str(self._env.action_labels(self.agent_name)[int(action_idx)])
+        except Exception:
+            return str(action_idx)
+        return label.split()[0] if label else str(action_idx)
+
+    @staticmethod
+    def _observation_features(observation) -> dict[str, float]:
+        obs = np.asarray(observation, dtype=np.float32).ravel()
+        return {f"obs_{i:03d}": float(v) for i, v in enumerate(obs)}
 
     def train(self, *args, **kwargs):
         pass
@@ -85,6 +109,7 @@ class HeuristicEnv(BlueFlatWrapperV2):
         subnet_hosts = getattr(self, "_cached_subnet_hosts", {})
         for agent_name, agent in self._heuristic_agents.items():
             agent._inner.reset()
+            agent._info.clear()
             agent._last_message = None
             try:
                 agent._inner.set_action_info(
@@ -108,7 +133,31 @@ class HeuristicEnv(BlueFlatWrapperV2):
         for agent_name, agent in self._heuristic_agents.items():
             if agent_name not in messages and agent._last_message is not None:
                 messages[agent_name] = agent._last_message
-        return super().step(actions=actions, messages=messages, **kwargs)
+
+        shap_info = {}
+        actions = actions or {}
+        for agent_name, agent in self._heuristic_agents.items():
+            try:
+                dict_obs = dict(self.env.environment_controller.get_last_observation(agent_name).data)
+                msg = extract_message_matrix(dict_obs)
+                shap_info[agent_name] = {
+                    "chosen_action_type": agent._action_class(actions.get(agent_name)),
+                    "chosen_action_str": str(actions.get(agent_name)),
+                    "shap_features": extract_shap_features(
+                        dict_obs,
+                        msg,
+                        mission_phase=getattr(self.env.environment_controller.state, "mission_phase", None),
+                    ),
+                }
+            except Exception:
+                continue
+
+        obs, rewards, term, trunc, info = super().step(actions=actions, messages=messages, **kwargs)
+        for agent_name, agent_info in shap_info.items():
+            if agent_name not in info or info[agent_name] is None:
+                info[agent_name] = {}
+            info[agent_name].update(agent_info)
+        return obs, rewards, term, trunc, info
 
 
 class Submission:
