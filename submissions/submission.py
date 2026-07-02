@@ -27,7 +27,7 @@ import numpy as np
 from CybORG import CybORG
 from CybORG.Agents import BaseAgent
 from CybORG.Agents.Wrappers import BlueFlatWrapperV2
-from CybORG.Agents.SimpleAgents.EnterpriseHeuristicAgentV11a import EnterpriseHeuristicAgentV11a
+from CybORG.Agents.SimpleAgents.EnterpriseHeuristicAgentV11b import EnterpriseHeuristicAgentV11b
 from CybORG.Evaluation.submission_v11b.submission import extract_message_matrix, extract_shap_features
 
 
@@ -41,7 +41,7 @@ class HeuristicSubmissionAgent(BaseAgent):
 
     def __init__(self, agent_name: str) -> None:
         self.agent_name = agent_name
-        self._inner = EnterpriseHeuristicAgentV11a(agent_name=agent_name)
+        self._inner = EnterpriseHeuristicAgentV11b(agent_name=agent_name)
         self._env: "HeuristicEnv | None" = None
         self._last_message: "np.ndarray | None" = None
         self._info: list[dict] = []
@@ -162,7 +162,7 @@ class HeuristicEnv(BlueFlatWrapperV2):
 
 class Submission:
     # -- Required metadata ----------------------------------------------------
-    NAME: str = "EnterpriseHeuristicAgent v11a"
+    NAME: str = "EnterpriseHeuristicAgent v11b"
     TEAM: str = "CC4-Optimized"
     TECHNIQUE: str = (
         "Rule-based priority heuristic with Restore-only threat response and preemptive OZ "

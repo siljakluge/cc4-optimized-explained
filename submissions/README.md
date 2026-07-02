@@ -45,7 +45,8 @@ For large explainability runs, keep the evaluation size high but sample SHAP row
 
 ```bash
 python explain.py \
-  --agent heuristic_v11b \
+  --agent gpu_test \
+  --non-heuristic \
   --mode single \
   --single_profile fsm_default \
   --max-eps 100 \
