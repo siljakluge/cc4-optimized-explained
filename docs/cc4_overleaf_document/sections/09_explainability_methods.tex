@@ -1,0 +1,173 @@
+\section{Explainability Methods and SHAP Grouping}
+
+The explainability layer in this fork has two jobs. First, it should make agent
+behaviour inspectable for debugging and comparison. Second, it should turn
+policy decisions into research artefacts that can be compared across red
+profiles, reward modes, and agent families. This section therefore separates
+three levels of explanation: environment-level traces, reward decomposition, and
+policy-level feature attribution.
+
+\subsection{Method Overview}
+
+\paragraph{Environment and action traces.}
+The most direct explanation method is the step log produced by
+\texttt{explain.py}. It records the selected blue action, red profile, reward
+components, and optional agent-provided metadata. These traces are not a
+post-hoc model explanation; they are the factual execution record. They are the
+right source for questions such as ``which action was taken?'', ``which red
+profile was active?'', and ``when did reward loss occur?''.
+
+\paragraph{Reward decomposition.}
+Reward decomposition attributes scalar reward changes to the environment's
+reward components. This is useful because the CC4 score mixes availability,
+confidentiality, integrity, green activity, and phase-dependent effects. A
+policy can have a good mean score while still losing reward through a specific
+failure mode, for example late Restore timing or contractor-network damage.
+Reward decomposition explains the consequence of decisions, whereas SHAP
+explains the inputs that made a decision predictable.
+
+\paragraph{Policy-level SHAP.}
+SHAP values approximate each feature's contribution to a model output relative
+to a background distribution \cite{lundberg2017unified}. In this repository SHAP
+is applied to a surrogate classifier trained on observed policy decisions. The
+surrogate maps logged \texttt{shap\_features} to the chosen action class. This is
+model-agnostic and works for both rule-based and learned agents, but the
+interpretation is intentionally narrow: the SHAP plots explain the surrogate's
+approximation of the observed policy, not the true simulator dynamics and not a
+causal intervention on the environment.
+
+\subsection{Current SHAP Data Flow}
+
+Both the v11b heuristic adapter and the MARL graph wrapper now export comparable
+\texttt{shap\_features}. The current feature set contains:
+
+\begin{itemize}
+  \item previous action metadata: \texttt{prev\_action\_success}, \texttt{prev\_action};
+  \item local observation flags extracted from the raw observation dictionary:
+        \texttt{has\_cmd\_sh}, \texttt{has\_escalate}, \texttt{has\_decoy\_exploit};
+  \item inter-agent message features:
+        \texttt{msg\_any\_received}, \texttt{msg\_n\_received},
+        \texttt{msg\_any\_scanned}, \texttt{msg\_any\_compromised},
+        \texttt{msg\_n\_scanned\_flags}, and
+        \texttt{msg\_n\_compromised\_flags}.
+\end{itemize}
+
+The current implementation is useful as a first comparable pipeline, but it is
+coarse. Keyword-derived features such as \texttt{has\_cmd\_sh} or
+\texttt{has\_escalate} compress many hosts and subnets into one bit. This makes
+the SHAP plots stable and cheap, but it can hide where the signal came from.
+
+\subsection{Recommended Semantic Feature Groups}
+
+If the SHAP pipeline were restarted from the current observation interface, the
+feature schema should be grouped around operational cyber-defence concepts
+rather than around parser details. The recommended groups are:
+
+\begin{longtable}{p{0.24\textwidth}p{0.30\textwidth}p{0.36\textwidth}}
+\toprule
+\textbf{Group} & \textbf{Example features} & \textbf{Interpretation} \\
+\midrule
+\texttt{action\_state} &
+\texttt{prev\_action\_success}, \texttt{prev\_action\_type},
+\texttt{in\_progress\_flag} &
+Whether the agent is reacting to the outcome or duration of its previous action. \\
+\texttt{red\_presence} &
+\texttt{n\_cmd\_sh}, \texttt{n\_privileged\_sessions},
+\texttt{n\_malware\_files}, \texttt{red\_seen\_any} &
+Evidence that red is present on observed hosts. \\
+\texttt{red\_intent} &
+\texttt{n\_escalation\_signals}, \texttt{n\_impact\_adjacent\_signals},
+\texttt{n\_degrade\_precursors} &
+Evidence about what red is likely trying to do next. \\
+\texttt{asset\_risk} &
+\texttt{host\_is\_server}, \texttt{subnet\_criticality},
+\texttt{contractor\_subnet\_flag}, \texttt{phase} &
+How expensive it would be to leave the observed state untreated. \\
+\texttt{communication} &
+\texttt{msg\_n\_received}, \texttt{msg\_n\_scanned\_flags},
+\texttt{msg\_n\_compromised\_flags}, \texttt{msg\_sender\_count} &
+How much of the decision is driven by shared information from other blue agents. \\
+\texttt{decoy\_surface} &
+\texttt{n\_active\_decoys}, \texttt{n\_decoy\_hits},
+\texttt{decoy\_depleted\_flag}, \texttt{red\_discover\_deception\_seen} &
+How deception-related mechanics shape blue's decision. This name is preferred
+over the broader label \texttt{deception}. \\
+\texttt{network\_control} &
+\texttt{blocked\_subnet\_count}, \texttt{comms\_blocked\_flag},
+\texttt{known\_reachable\_subnets} &
+Whether the agent is acting because of connectivity or containment constraints. \\
+\texttt{uncertainty} &
+\texttt{unknown\_host\_count}, \texttt{stale\_observation\_age},
+\texttt{conflicting\_signals} &
+How much the action is driven by partial observability rather than direct evidence. \\
+\bottomrule
+\end{longtable}
+
+The important change is that \texttt{decoy\_surface} should not be treated as a
+generic explanation bucket. In CC4, deception has a concrete simulator meaning:
+blue can deploy deceptive services through \texttt{Misinform}, and red can spend
+time on \texttt{DiscoverDeception} to detect decoys. A SHAP group with that name
+should therefore contain only decoy deployment, decoy hit/depletion, and
+red-deception-check signals. If those signals are not available in the blue
+observation, the group should be omitted or marked as environment-side metadata,
+not inferred through unrelated strings.
+
+\subsection{How to Improve SHAP Quality}
+
+The next iteration should improve the SHAP values in four ways.
+
+\paragraph{Use structured feature extraction.}
+The current keyword scan is robust to changing dictionary shapes, but it is not
+semantically precise. The extractor should parse the observation dictionary into
+stable typed counters: per-host compromise indicators, process flags, malware
+file flags, service observations, message flags, subnet identifiers, and mission
+phase. This reduces accidental feature matches and makes the feature names
+defensible in a paper.
+
+\paragraph{Keep host-local and aggregate views.}
+A single global flag such as \texttt{has\_cmd\_sh} answers whether a signal
+exists, not where it exists or how many hosts are affected. The better schema is
+to log both aggregate counters and local action-target features. For example,
+\texttt{n\_cmd\_sh\_observed} describes the agent's whole observation, while
+\texttt{target\_has\_cmd\_sh} describes the host selected by the action. This is
+especially important for distinguishing \texttt{Analyse}, \texttt{Remove},
+\texttt{Restore}, and \texttt{Misinform}.
+
+\paragraph{Explain action families separately.}
+The current multiclass surrogate compresses all action classes into one
+classifier. For a paper figure, it is often clearer to train one-vs-rest
+surrogates for action families such as \texttt{Monitor}, \texttt{Analyse},
+\texttt{Remove}, \texttt{Restore}, \texttt{Misinform}, and \texttt{Block}. This
+turns the explanation into a question readers can understand: ``what evidence
+makes Restore more likely than other actions?''
+
+\paragraph{Use matched background samples.}
+SHAP values depend on the background distribution. For CC4, background rows
+should be stratified by red profile, mission phase, and agent index. Otherwise
+the explanation may mostly rediscover that some profiles or phases are more
+common in the sample. Large runs should continue to evaluate all episodes while
+using deterministic SHAP sampling through \texttt{--shap-episode-stride},
+\texttt{--shap-step-stride}, and \texttt{--shap-max-rows-per-profile}.
+
+\subsection{Recommended Near-Term Implementation}
+
+The practical next step is not to add more plots first. It is to make the
+\texttt{shap\_features} contract stronger:
+
+\begin{enumerate}
+  \item replace the keyword-only extractor with a structured observation
+        extractor that emits typed counters and target-local features;
+  \item rename the current broad \texttt{deception} group to
+        \texttt{decoy\_surface};
+  \item store a \texttt{feature\_group} mapping next to each SHAP CSV so grouped
+        plots are reproducible;
+  \item report both per-feature mean absolute SHAP and grouped mean absolute
+        SHAP, normalized within each action family;
+  \item keep one compact global summary table, but use per-action-family plots
+        for interpretation in the paper.
+\end{enumerate}
+
+This produces less flashy but more defensible explanations: the plots would show
+whether the agent's \texttt{Restore} decisions are driven by red-presence
+signals, asset risk, communication, or uncertainty, and whether this changes
+under different red profiles.
