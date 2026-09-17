@@ -233,16 +233,14 @@ class BlueFlatWrapper(BlueFixedActionWrapper):
             # Process malware events for users, then servers
             subnet_hosts = self._cached_subnet_hosts.get(subnet, [h for h in hosts if subnet in h and "router" not in h])
 
-            process_subvector = []
-            connection_subvector = []
+            process_subvector = MAX_HOSTS * [False]
+            connection_subvector = MAX_HOSTS * [False]
             for h in subnet_hosts:
                 if h in state.hosts:
+                    host_index = self._host_observation_index(h)
                     # _get_procesess/_get_connections now return bool — no list alloc (Change 5)
-                    process_subvector.append(self._get_procesess(state, h))
-                    connection_subvector.append(self._get_connections(state, h))
-                else:
-                    process_subvector.append(False)
-                    connection_subvector.append(False)
+                    process_subvector[host_index] = self._get_procesess(state, h)
+                    connection_subvector[host_index] = self._get_connections(state, h)
 
             proto_observation.extend(
                 itertools.chain(
@@ -345,15 +343,12 @@ class BlueFlatWrapper(BlueFixedActionWrapper):
 
             # Process and connection flags for hosts in this subnet
             subnet_hosts = self._cached_subnet_hosts.get(subnet, [h for h in hosts if subnet in h and "router" not in h])
-            n_hosts = len(subnet_hosts)
-            for i, h in enumerate(subnet_hosts):
+            for h in subnet_hosts:
                 if h in state.hosts:
-                    buf[cursor + i] = self._get_procesess(state, h)
-                    buf[cursor + n_hosts + i] = self._get_connections(state, h)
-                else:
-                    buf[cursor + i] = False
-                    buf[cursor + n_hosts + i] = False
-            cursor += 2 * n_hosts
+                    host_index = self._host_observation_index(h)
+                    buf[cursor + host_index] = self._get_procesess(state, h)
+                    buf[cursor + MAX_HOSTS + host_index] = self._get_connections(state, h)
+            cursor += 2 * MAX_HOSTS
 
         # Messages from other agents (pad to NUM_MESSAGES when fewer arrive)
         messages_raw = list(observation.get("message", []))
@@ -371,6 +366,20 @@ class BlueFlatWrapper(BlueFixedActionWrapper):
             buf[cursor:] = 0.0
 
         return buf.copy()
+
+    @staticmethod
+    def _host_observation_index(hostname: str) -> int:
+        """Map an enterprise host name to its stable per-subnet vector slot."""
+        host_number = int(hostname.rsplit("_", 1)[1])
+        if "server_host" in hostname:
+            if host_number >= MAX_SERVER_HOSTS:
+                raise ValueError(f"Server host index exceeds observation capacity: {hostname}")
+            return host_number
+        if "user_host" in hostname:
+            if host_number >= MAX_USER_HOSTS:
+                raise ValueError(f"User host index exceeds observation capacity: {hostname}")
+            return MAX_SERVER_HOSTS + host_number
+        raise ValueError(f"Unsupported host name in enterprise observation: {hostname}")
 
     def _build_comms_policy(self):
         policy_dict = {}
