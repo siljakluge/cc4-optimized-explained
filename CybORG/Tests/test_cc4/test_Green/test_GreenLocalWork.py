@@ -203,6 +203,22 @@ def test_phishing_error_rate_session_creation():
 
     assert check_red_session
 
+
+def test_phishing_fails_when_no_red_candidate_is_routable(monkeypatch):
+    """Phishing exhausts unroutable candidates instead of retrying forever."""
+    cyborg, agent_interface = create_cyborg_env()
+    state = cyborg.environment_controller.state
+    action = PhishingEmail(
+        agent=agent_interface.agent_name,
+        session=0,
+        ip_address=agent_interface.agent.own_ip,
+    )
+    monkeypatch.setattr(action, "check_routable", lambda *args, **kwargs: False)
+
+    result = action.execute(state)
+
+    assert result.data['success'] == False
+
 def test_failure_on_fully_degraded_services():
     """Tests that the action can fail when the services on the host have no reliability (due to being degraded)."""
 

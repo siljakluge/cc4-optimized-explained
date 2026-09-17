@@ -504,3 +504,18 @@ def test_repeat_adding_interface_info(create_observation):
     observation.add_interface_info(hostid="test", ip_address="127.0.0.1")
     observation.add_interface_info(hostid="test", ip_address="127.0.0.1")
     assert len(observation.get_dict()["test"]["Interface"]) == 1
+
+
+def test_add_file_info_preserves_false_and_zero_values(create_observation):
+    observation = create_observation
+    observation.add_file_info(
+        hostid="test",
+        path="/tmp",
+        name="artifact.bin",
+        signed=False,
+        density=0.0,
+    )
+
+    file_info = observation.get_dict()["test"]["Files"][0]
+    assert file_info["Signed"] is False
+    assert file_info["Density"] == 0.0

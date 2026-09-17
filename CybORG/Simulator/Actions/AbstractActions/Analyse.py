@@ -7,7 +7,10 @@ from CybORG.Simulator.Actions.ConcreteActions.SigCheck import SigCheck
 class Analyse(Action):
     """ Checks for malware on a single host.
 
-    Targets a single host and returns any files that have Density >0.9. Based on Density Scout.
+    Targets a single host and returns file metadata collected by DensityScout
+    and SigCheck.  Consumers can classify the returned files using density and
+    signature information (the CC4 malware marker is density >= 0.9 and
+    unsigned).
     https://cert.at/en/downloads/software/software-densityscout
 
     Attributes
