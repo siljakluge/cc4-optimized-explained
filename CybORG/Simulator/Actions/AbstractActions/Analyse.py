@@ -7,7 +7,10 @@ from CybORG.Simulator.Actions.ConcreteActions.SigCheck import SigCheck
 class Analyse(Action):
     """ Checks for malware on a single host.
 
-    Targets a single host and returns any files that have Density >0.9. Based on Density Scout.
+    Targets a single host and returns file metadata collected by DensityScout
+    and SigCheck.  Consumers can classify the returned files using density and
+    signature information (the CC4 malware marker is density >= 0.9 and
+    unsigned).
     https://cert.at/en/downloads/software/software-densityscout
 
     Attributes
@@ -19,6 +22,8 @@ class Analyse(Action):
     hostname: str
         the name of the host action is targetting.
     """
+    DEFAULT_DURATION = 2
+
     def __init__(self, session: int, agent: str, hostname: str):
         """ Instantiates Analyse action.
 
@@ -35,7 +40,7 @@ class Analyse(Action):
         self.agent = agent
         self.session = session
         self.hostname = hostname
-        self.duration = 2
+        self.duration = self.DEFAULT_DURATION
 
     def execute(self, state) -> Observation:
         """ Executes the Action.

@@ -10,6 +10,16 @@
       "is_heuristic": true,
       "description": "EnterpriseHeuristicAgent v11b submission with heuristic SHAP info"
     },
+    "heuristic_v9_remove": {
+      "path": "../CybORG/Evaluation/submission_v9",
+      "is_heuristic": true,
+      "description": "EnterpriseHeuristicAgent v9.1 Remove-aware balancing evaluation"
+    },
+    "heuristic_analyse_probe": {
+      "path": "../CybORG/Evaluation/submission_analyse_probe",
+      "is_heuristic": true,
+      "description": "v9.1 heuristic that Analyses once before the first Remove per host"
+    },
     "marl_test_cpu": {
       "path": "../marl",
       "is_heuristic": false,

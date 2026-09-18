@@ -481,11 +481,16 @@ class Observation:
         if last_modified_time is not None:
             new_file["Last Modified Time"] = last_modified_time
 
-        signed = signed or kwargs.get('Signed', None)
+        # ``False`` is meaningful here: unsigned files are the forensic marker
+        # used by Analyse/Remove.  Boolean values must therefore not be merged
+        # with ``or``, which silently turns ``False`` into ``None``.
+        if signed is None:
+            signed = kwargs.get('Signed', None)
         if signed is not None:
             new_file['Signed'] = signed
 
-        density = density or kwargs.get('Density', None)
+        if density is None:
+            density = kwargs.get('Density', None)
         if density is not None:
             new_file['Density'] = density
 

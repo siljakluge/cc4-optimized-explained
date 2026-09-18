@@ -21,6 +21,8 @@ class Remove(Action):
     hostname: str
         the hostname of the host targeted by the action.
     """
+    DEFAULT_DURATION = 3
+
     def __init__(self, session: int, agent: str, hostname: str):
         """ Instantiates the Remove class.
 
@@ -37,7 +39,7 @@ class Remove(Action):
         self.agent = agent
         self.session = session
         self.hostname = hostname
-        self.duration = 3
+        self.duration = self.DEFAULT_DURATION
 
     def execute(self, state: State) -> Observation:
         """ Executes the action.

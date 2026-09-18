@@ -16,6 +16,28 @@ blue_agent_name = 'blue_agent_0'
 target_subnet = 'restricted_zone_a_subnet'
 target_host = target_subnet + '_server_host_0'
 
+
+def test_blue_action_durations_are_configurable(monkeypatch):
+    monkeypatch.setattr(Analyse, "DEFAULT_DURATION", 1)
+    monkeypatch.setattr(Remove, "DEFAULT_DURATION", 2)
+
+    assert Analyse(session=0, agent=blue_agent_name, hostname=target_host).duration == 1
+    assert Remove(session=0, agent=blue_agent_name, hostname=target_host).duration == 2
+
+
+def test_enterprise_heuristic_uses_configured_remove_duration(monkeypatch):
+    from CybORG.Agents.SimpleAgents.EnterpriseHeuristicAgent import EnterpriseHeuristicAgent
+
+    agent = EnterpriseHeuristicAgent(agent_name=blue_agent_name)
+    agent._step = 11
+    agent._remove_at[target_host] = 10
+
+    monkeypatch.setenv("CYBORG_REMOVE_DURATION", "2")
+    assert agent._busy(target_host)
+
+    agent._step = 12
+    assert not agent._busy(target_host)
+
 def test_Monitor(cyborg_with_root_shell_on_cns0):
     """Tests that Monitor (run as a default action for blue agents) detects service discovery attempts when detection_rate = 1."""
 
@@ -90,6 +112,8 @@ def test_Analyse(cyborg_with_root_shell_on_cns0):
     obs_visibility.pop('action')
     obs_visibility.pop('success')
     assert len(obs_visibility[target_host]['Files']) == 1
+    assert obs_visibility[target_host]['Files'][0]['Density'] >= 0.9
+    assert obs_visibility[target_host]['Files'][0]['Signed'] is False
     
     # Red privilege escalates restricted_zone_a_subnet_server_host_0 to gain a user shell
     red_action = PrivilegeEscalate(hostname=target_host, session=0, agent=red_agent_name[1])
@@ -157,6 +181,37 @@ def test_Restore(cyborg_with_root_shell_on_cns0):
     assert obs['blue_agent_0']['success'] == True
     assert red_agent_name[1] not in obs.keys()
     assert red_agent_name[1] not in cyborg.active_agents
+
+    # Restore must keep all redundant session indexes and parent/child links
+    # consistent after removing the sessions resident on the reimaged host.
+    state = env.state
+    for agent, sessions in state.sessions.items():
+        assert state.sessions_count[agent] == len(sessions)
+        for session in sessions.values():
+            assert session.active
+            assert session.parent is None or session.parent in sessions
+            for child in session.children.values():
+                assert state.sessions.get(child.agent, {}).get(child.ident) is child
+
+
+def test_restore_preserves_staged_monitor_events(cyborg_with_root_shell_on_cns0):
+    host = cyborg_with_root_shell_on_cns0.environment_controller.state.hosts[target_host]
+    staged_network_event = object()
+    staged_process_event = object()
+    incoming_network_event = object()
+    incoming_process_event = object()
+
+    host.events.old_network_connections = [staged_network_event]
+    host.events.old_process_creation = [staged_process_event]
+    host.events.network_connections = [incoming_network_event]
+    host.events.process_creation = [incoming_process_event]
+
+    host.restore()
+
+    assert host.events.old_network_connections == [staged_network_event]
+    assert host.events.old_process_creation == [staged_process_event]
+    assert host.events.network_connections == []
+    assert host.events.process_creation == []
 
 def test_Remove(cyborg_with_root_shell_on_cns0):
     cyborg = get_shell_on_rzas0(cyborg=cyborg_with_root_shell_on_cns0, shell_type='user')

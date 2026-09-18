@@ -68,6 +68,11 @@ def test_blue_agents_can_open_and_close_firewalls(cc4_cyborg: CybORG):
     red_agent = red_agent_interface.agent_name
     blue_agent_interface, blue_session = get_agent(sim_controller, to_subnet, "blue")
     blue_agent = blue_agent_interface.agent_name
+    blue_session = next(
+        session
+        for session in sim_controller.state.sessions[blue_agent].values()
+        if to_subnet in session.hostname and "router" not in session.hostname
+    )
 
     # Attempt SSHBruteForce from User0 to Enterprise0.
     # Not blocked -> should succeed.

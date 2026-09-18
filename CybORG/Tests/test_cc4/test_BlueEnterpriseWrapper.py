@@ -123,6 +123,9 @@ def test_BlueEnterpriseWrapper_reset_obs_type(reset_obs):
 def test_BlueEnterpriseWrapper_reset_obs_length(reset_obs, blue_agent):
     assert len(reset_obs) == LONG_ENDPOINT if blue_agent==HQ_AGENT else MESSAGE_SLICE.stop
 
+def test_BlueEnterpriseWrapper_reset_obs_matches_declared_space(cyborg, reset_obs, blue_agent):
+    assert cyborg.observation_space(blue_agent).contains(reset_obs)
+
 @pytest.fixture
 def reset_info(reset_results, blue_agent):
     return reset_results[1]
@@ -156,6 +159,9 @@ def test_BlueEnterpriseWrapper_step_obs_type(step_obs):
 
 def test_BlueEnterpriseWrapper_step_obs_length(step_obs, blue_agent):
     assert len(step_obs) == LONG_ENDPOINT if blue_agent==HQ_AGENT else MESSAGE_SLICE.stop
+
+def test_BlueEnterpriseWrapper_step_obs_matches_declared_space(cyborg, step_obs, blue_agent):
+    assert cyborg.observation_space(blue_agent).contains(step_obs)
 
 @pytest.fixture
 def reward(step_results, blue_agent):

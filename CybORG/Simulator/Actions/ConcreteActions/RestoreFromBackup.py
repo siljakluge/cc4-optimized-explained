@@ -25,4 +25,49 @@ class RestoreFromBackup(TargetedLocalAction):
             for sid in sessions:
                 if agent in all_host_sessions and sid in all_host_sessions[agent]:
                     state.sessions[agent][sid] = all_host_sessions[agent][sid]
+
+        # Restore permanently removes every non-baseline session on the target
+        # host.  Keep all redundant session indexes consistent and disconnect
+        # descendants whose pivot/parent disappeared with the reimage.
+        permanently_removed_by_agent = {}
+        for agent, removed in all_host_sessions.items():
+            surviving_ids = set(state.sessions[agent])
+            permanently_removed = set(removed) - surviving_ids
+            permanently_removed_by_agent[agent] = permanently_removed
+            if permanently_removed:
+                state.sessions_count[agent] -= len(permanently_removed)
+
+        # A session reached through a removed pivot is no longer usable. Remove
+        # these descendants transitively instead of leaving inactive sessions
+        # in state.sessions (RedSessionCheck requires that index to contain only
+        # live sessions).
+        for agent, sessions in state.sessions.items():
+            removed_ids = permanently_removed_by_agent.get(agent, set())
+            while True:
+                orphan_ids = {
+                    sid for sid, session in sessions.items()
+                    if session.parent in removed_ids
+                }
+                if not orphan_ids:
+                    break
+                for sid in orphan_ids:
+                    orphan = sessions.pop(sid)
+                    host_sessions = state.hosts[orphan.hostname].sessions.get(agent, [])
+                    if sid in host_sessions:
+                        host_sessions.remove(sid)
+                state.sessions_count[agent] -= len(orphan_ids)
+                removed_ids.update(orphan_ids)
+
+        # Child mappings can survive agent reassignment and may therefore point
+        # across agent dictionaries. Validate them by object identity against
+        # the authoritative state rather than by id within the parent's agent.
+        for agent, sessions in state.sessions.items():
+            for session in sessions.values():
+                for child_id, child in list(session.children.items()):
+                    live_child = state.sessions.get(child.agent, {}).get(child.ident)
+                    if live_child is not child:
+                        session.dead_child(child_id)
+
+        # Session removals invalidate State's cached pid-to-session lookup.
+        state._pid_index_dirty = True
         return Observation()

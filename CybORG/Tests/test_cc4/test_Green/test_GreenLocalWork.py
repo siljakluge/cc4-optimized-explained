@@ -185,6 +185,12 @@ def test_phishing_error_rate_session_creation():
     state = cyborg.environment_controller.state
     hostname = cyborg.environment_controller.state.ip_addresses[agent_interface.agent.own_ip]
 
+    # Local work returns before attempting phishing when its chosen service
+    # fails.  Keep this test focused on session creation rather than sampling
+    # the scenario's randomized service reliability.
+    for service in state.hosts[hostname].services.values():
+        service._percent_reliable = 100
+
     action = GreenLocalWork(
         agent=agent_interface.agent_name,
         session_id=0,
@@ -202,6 +208,33 @@ def test_phishing_error_rate_session_creation():
             check_red_session = True
 
     assert check_red_session
+
+
+def test_phishing_fails_when_no_red_candidate_is_routable(monkeypatch):
+    """Phishing exhausts unroutable candidates instead of retrying forever."""
+    cyborg, agent_interface = create_cyborg_env()
+    state = cyborg.environment_controller.state
+    action = PhishingEmail(
+        agent=agent_interface.agent_name,
+        session=0,
+        ip_address=agent_interface.agent.own_ip,
+    )
+
+    # A randomized scenario may place the initial red foothold directly on
+    # this green host.  Remove that foothold so the test reaches the routing
+    # candidate-exhaustion path it is intended to cover.
+    green_hostname = state.ip_addresses[action.ip_address]
+    green_host = state.hosts[green_hostname]
+    for red_agent in [agent for agent in green_host.sessions if "red" in agent]:
+        for session_id in green_host.sessions[red_agent]:
+            del state.sessions[red_agent][session_id]
+        green_host.sessions[red_agent] = []
+
+    monkeypatch.setattr(action, "check_routable", lambda *args, **kwargs: False)
+
+    result = action.execute(state)
+
+    assert result.data['success'] == False
 
 def test_failure_on_fully_degraded_services():
     """Tests that the action can fail when the services on the host have no reliability (due to being degraded)."""

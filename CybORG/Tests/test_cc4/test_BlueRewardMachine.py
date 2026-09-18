@@ -10,6 +10,7 @@ from CybORG.Simulator.Actions.GreenActions.GreenAccessService import GreenAccess
 from CybORG import CybORG
 from CybORG.Simulator.Actions.ConcreteActions.ControlTraffic import BlockTrafficZone
 from CybORG.Shared.BlueRewardMachine import BlueRewardMachine
+from CybORG.Shared.Enums import ProcessName
 from CybORG.Simulator.Service import Service
 
 ALL_SUBNETS = [
@@ -38,10 +39,11 @@ def test_Score_Red_Impact():
     hostname_red = env.state.sessions[red_agent_str][0].hostname
 
     host = env.state.hosts[hostname_red]
-    process = Process(pid=host.create_pid(), process_name=red_agent_str, username='root')
+    process = Process(pid=host.create_pid(), process_name=ProcessName.OTSERVICE, username='root')
     host.processes.append(process)
-    host.add_service('OTService', Service(process=process.pid))
-    env.state.sessions[red_agent_str][0].ot_service = 'OTService'
+    host.add_service(ProcessName.OTSERVICE, Service(process=process.pid))
+    env.state.sessions[red_agent_str][0].username = 'root'
+    env.state.sessions[red_agent_str][0].ot_service = ProcessName.OTSERVICE
     
     expected_rewards = [-5, 0, 0]
     for mp in range(3):
@@ -60,6 +62,25 @@ def test_Score_Red_Impact():
             state=env.state
         )
         assert reward == expected_rewards[mp]
+
+
+def test_failed_red_impact_is_not_rewarded():
+    esg = EnterpriseScenarioGenerator(
+        blue_agent_class=SleepAgent, green_agent_class=SleepAgent, red_agent_class=SleepAgent
+    )
+    cyborg = CybORG(scenario_generator=esg, seed=3)
+    env = cyborg.environment_controller
+    env.reset()
+
+    red_agent = 'red_agent_0'
+    hostname = env.state.sessions[red_agent][0].hostname
+    action = Impact(hostname=hostname, agent=red_agent, session=0)
+    action.duration = 1
+
+    result = cyborg.step(action=action, agent=red_agent)
+
+    assert result.observation['success'] == False
+    assert result.reward == 0
         
 @pytest.mark.parametrize('green_subnet', ALL_SUBNETS)
 @pytest.mark.parametrize('mission_phase', [0,1,2])
