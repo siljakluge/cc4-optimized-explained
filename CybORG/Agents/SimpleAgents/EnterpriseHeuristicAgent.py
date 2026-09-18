@@ -109,6 +109,7 @@ Priority 8:  SLEEP.
 """
 from __future__ import annotations
 
+import os
 import re
 from typing import Optional
 
@@ -138,8 +139,12 @@ _OFF_BLOCKED  = NUM_SUBNETS        # 9
 _OFF_COMMS    = NUM_SUBNETS * 2    # 18
 _OFF_PROC     = NUM_SUBNETS * 3    # 27
 
-# Action durations
-REMOVE_DUR  = 3
+# Action durations. Remove is configurable by the evaluation harness, so read
+# it at decision time rather than freezing the value when this module imports.
+def _remove_duration() -> int:
+    return int(os.environ.get("CYBORG_REMOVE_DURATION", "3"))
+
+
 RESTORE_DUR = 5
 
 # Deploy up to MAX_DECOYS decoy services per host.
@@ -345,7 +350,7 @@ class EnterpriseHeuristicAgent:
         }
         for h in proc_alerts:
             ra = self._remove_at.get(h, -1)
-            if ra >= 0 and self._step > ra + REMOVE_DUR:
+            if ra >= 0 and self._step > ra + _remove_duration():
                 root_indicators.add(h)
 
         # -- Read incoming peer messages (msg section sits at obs[base:base+32]) -
@@ -649,7 +654,7 @@ class EnterpriseHeuristicAgent:
 
     def _busy(self, hostname: str) -> bool:
         """True if a Remove or Restore is still in progress for this host."""
-        if self._step <= self._remove_at.get(hostname, -1) + REMOVE_DUR - 1:
+        if self._step <= self._remove_at.get(hostname, -1) + _remove_duration() - 1:
             return True
         if self._step <= self._restore_at.get(hostname, -1) + RESTORE_DUR - 1:
             return True

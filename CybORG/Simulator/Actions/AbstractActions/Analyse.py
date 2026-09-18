@@ -22,6 +22,8 @@ class Analyse(Action):
     hostname: str
         the name of the host action is targetting.
     """
+    DEFAULT_DURATION = 2
+
     def __init__(self, session: int, agent: str, hostname: str):
         """ Instantiates Analyse action.
 
@@ -38,7 +40,7 @@ class Analyse(Action):
         self.agent = agent
         self.session = session
         self.hostname = hostname
-        self.duration = 2
+        self.duration = self.DEFAULT_DURATION
 
     def execute(self, state) -> Observation:
         """ Executes the Action.

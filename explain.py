@@ -35,6 +35,7 @@ from matplotlib import pyplot as plt
 from CybORG import CybORG, CYBORG_VERSION
 from CybORG.Agents import SleepAgent, EnterpriseGreenAgent, FiniteStateRedAgent
 from CybORG.Simulator.Scenarios import EnterpriseScenarioGenerator
+from CybORG.Simulator.Actions import Analyse, Remove
 
 from plotting.plot_actions import log_actions_jsonl
 from SHAP.policy_shap_heuristic import train_surrogate_and_shap
@@ -381,10 +382,15 @@ def run_one_episode_and_log(
         # older manual translation path, then finally to the raw action ids.
         if translated_actions is not None:
             actions_actual = translated_actions
-        elif not is_heuristic and submission.NAME != "Sleep" and hasattr(wrapped_cyborg, "action_translator"):
+        elif submission.NAME != "Sleep" and hasattr(wrapped_cyborg, "action_translator"):
             actions_actual = {
                 agent_name: wrapped_cyborg.action_translator(agent_name, actions[agent_name])
                 for agent_name in actions
+            }
+        elif hasattr(wrapped_cyborg, "action_labels"):
+            actions_actual = {
+                agent_name: wrapped_cyborg.action_labels(agent_name)[int(action)]
+                for agent_name, action in actions.items()
             }
         else:
             actions_actual = actions
@@ -472,6 +478,8 @@ def run_explainability_profiles(
 
     # plotting controls
     include_mixed_in_sweep: bool = False,
+    analyse_duration: int = Analyse.DEFAULT_DURATION,
+    remove_duration: int = Remove.DEFAULT_DURATION,
 ):
     cyborg_version = CYBORG_VERSION
     scenario = "Scenario4"
@@ -482,6 +490,10 @@ def run_explainability_profiles(
     print(author_header)
     print(f"Using agents {submission.AGENTS}")
     print("Available profiles:", sorted(PROFILE_REGISTRY.keys()))
+    print(f"Blue action durations: Analyse={analyse_duration}, Remove={remove_duration}")
+
+    Analyse.DEFAULT_DURATION = analyse_duration
+    Remove.DEFAULT_DURATION = remove_duration
 
     out_root = Path(output_dir)
     ensure_dir(out_root)
@@ -752,6 +764,8 @@ def run_explainability_profiles(
                     "shap_episode_stride": shap_episode_stride if shap else None,
                     "shap_step_stride": shap_step_stride if shap else None,
                     "shap_max_rows_per_profile": shap_max_rows_per_profile if shap else None,
+                    "analyse_duration": analyse_duration,
+                    "remove_duration": remove_duration,
                 },
                 "time": {"start": str(start), "end": str(end), "elapsed": str(end - start)},
                 "reward_scalar": {
@@ -829,6 +843,8 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=1337)
     parser.add_argument("--max-eps", type=int, default=10)
     parser.add_argument("--episode-length", type=int, default=500)
+    parser.add_argument("--analyse-duration", type=int, default=Analyse.DEFAULT_DURATION)
+    parser.add_argument("--remove-duration", type=int, default=Remove.DEFAULT_DURATION)
 
     parser.add_argument("--shap", action="store_true")
     parser.add_argument("--shap-background-samples", type=int, default=200)
@@ -854,6 +870,12 @@ if __name__ == "__main__":
     )
 
     parser.add_argument("--output", type=str, default=os.path.abspath("Results"))
+    parser.add_argument(
+        "--run-label",
+        type=str,
+        default=None,
+        help="Optional deterministic run-directory name instead of the timestamped default.",
+    )
     parser.add_argument(
         "--agent",
         type=str,
@@ -883,6 +905,10 @@ if __name__ == "__main__":
     parser.add_argument("--include-mixed-in-sweep", action="store_true")
 
     args = parser.parse_args()
+    if args.analyse_duration < 1 or args.remove_duration < 1:
+        parser.error("Action durations must be positive integers.")
+    os.environ["CYBORG_ANALYSE_DURATION"] = str(args.analyse_duration)
+    os.environ["CYBORG_REMOVE_DURATION"] = str(args.remove_duration)
     os.environ["CYBORG_PHASE_REWARD_MODE"] = args.phase_reward_mode
     os.environ["CYBORG_REWARD_BLUE"] = "1" if args.reward_blue else "0"
 
@@ -913,7 +939,8 @@ if __name__ == "__main__":
     os.makedirs(args.output, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d-%H%M")
     agent_type = args.agent or submission.NAME
-    run_dir = os.path.join(args.output, f"{agent_type}_{ts}")
+    run_name = args.run_label or f"{agent_type}_{ts}"
+    run_dir = os.path.join(args.output, run_name)
     rmkdir(run_dir)
 
     weights = parse_profile_weights(args.profile_weights) if args.profile_weights else None
@@ -937,6 +964,8 @@ if __name__ == "__main__":
         single_profile=args.single_profile,
         profile_weights=weights,
         include_mixed_in_sweep=args.include_mixed_in_sweep,
+        analyse_duration=args.analyse_duration,
+        remove_duration=args.remove_duration,
     )
 
     """python explain.py \

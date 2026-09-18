@@ -16,6 +16,28 @@ blue_agent_name = 'blue_agent_0'
 target_subnet = 'restricted_zone_a_subnet'
 target_host = target_subnet + '_server_host_0'
 
+
+def test_blue_action_durations_are_configurable(monkeypatch):
+    monkeypatch.setattr(Analyse, "DEFAULT_DURATION", 1)
+    monkeypatch.setattr(Remove, "DEFAULT_DURATION", 2)
+
+    assert Analyse(session=0, agent=blue_agent_name, hostname=target_host).duration == 1
+    assert Remove(session=0, agent=blue_agent_name, hostname=target_host).duration == 2
+
+
+def test_enterprise_heuristic_uses_configured_remove_duration(monkeypatch):
+    from CybORG.Agents.SimpleAgents.EnterpriseHeuristicAgent import EnterpriseHeuristicAgent
+
+    agent = EnterpriseHeuristicAgent(agent_name=blue_agent_name)
+    agent._step = 11
+    agent._remove_at[target_host] = 10
+
+    monkeypatch.setenv("CYBORG_REMOVE_DURATION", "2")
+    assert agent._busy(target_host)
+
+    agent._step = 12
+    assert not agent._busy(target_host)
+
 def test_Monitor(cyborg_with_root_shell_on_cns0):
     """Tests that Monitor (run as a default action for blue agents) detects service discovery attempts when detection_rate = 1."""
 
