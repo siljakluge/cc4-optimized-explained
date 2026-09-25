@@ -96,7 +96,7 @@ class SimpleSelfAttention(nn.Module):
 
 class InductiveActorNetwork(nn.Module):
     def __init__(self, in_dim, global_state_space=3,
-                 node_action_space=4, edge_action_space=2, global_action_space=1,
+                 node_action_space=4, edge_action_space=2, global_action_space=0,
                  hidden1=256, hidden2=64, gdim=64, lr=0.0003, concat_edges=False):
         super().__init__()
 
@@ -131,10 +131,13 @@ class InductiveActorNetwork(nn.Module):
         )
         self.edge_out = nn.Linear(hidden2 // 2 + gdim, edge_action_space)
 
-        self.global_out = nn.Sequential(
-            nn.Linear(gdim, gdim//2),
-            nn.ReLU(),
-            nn.Linear(gdim//2, global_action_space)
+        self.global_out = (
+            nn.Sequential(
+                nn.Linear(gdim, gdim//2),
+                nn.ReLU(),
+                nn.Linear(gdim//2, global_action_space)
+            )
+            if global_action_space > 0 else None
         )
 
         self.sm = nn.Softmax(dim=1)
@@ -226,9 +229,9 @@ class InductiveActorNetwork(nn.Module):
             nbatches, edge_a.size(1)*MAX_EDGES
         )
 
-        # Finally, compute prob of taking a global action
-        # (Not an action upon a node or an edge. E.g. sleep)
-        glb_a = self.global_out(g) # B x d
+        # Monitor runs automatically in CC4, so the default policy has no
+        # selectable global action.
+        glb_a = self.global_out(g) if self.global_out is not None else g.new_empty((g.size(0), 0))
 
         out = torch.cat([node_a, edge_a, glb_a], dim=-1)
 
@@ -891,4 +894,3 @@ def load(in_f):
 
     agent.eval()
     return agent
-
