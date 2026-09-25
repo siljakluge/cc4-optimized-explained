@@ -55,11 +55,13 @@ MAX_USERS = 10
 MAX_HOSTS = 16
 POSSIBLE_NEIGHBORS = 8
 
-from CybORG.Simulator.Actions import Analyse, Remove, Restore, DeployDecoy, Monitor
+from CybORG.Simulator.Actions import Analyse, Remove, Restore, DeployDecoy
 from CybORG.Simulator.Actions.ConcreteActions.ControlTraffic import BlockTrafficZone, AllowTrafficZone
 NODE_ACTIONS = [Analyse, Remove, Restore, DeployDecoy]
 EDGE_ACTIONS = [AllowTrafficZone, BlockTrafficZone]
-GLOBAL_ACTIONS = [Monitor]
+# Monitor is an automatic end-of-turn action in CC4.  It is deliberately not
+# exposed to the policy: selecting it would only waste the agent's decision.
+GLOBAL_ACTIONS = []
 
 N_NODE_ACTIONS = len(NODE_ACTIONS)
 N_EDGE_ACTIONS = len(EDGE_ACTIONS)

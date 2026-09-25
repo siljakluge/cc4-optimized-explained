@@ -24,6 +24,7 @@ import torch
 from CybORG.env import CybORG
 from CybORG.Agents.Wrappers.EnterpriseMAE import EnterpriseMAE
 from CybORG.Shared.Enums import TernaryEnum
+from CybORG.Simulator.Actions import Monitor
 
 from wrappers.observation_graph import ObservationGraph
 from wrappers.globals import *
@@ -172,9 +173,7 @@ class GraphWrapper(EnterpriseMAE):
 
             return a(session, agent_name, target.replace('_router',''), which_subnet)
 
-        # Global action (only one)
-        else:
-            return Monitor(session, agent_name)
+        raise ValueError(f"Action id {a_id} is outside the policy action space.")
 
 
     def step(self, action):

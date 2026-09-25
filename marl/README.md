@@ -129,7 +129,7 @@ Each blue agent can take **three kinds of actions** on its subnet:
 |-------|---------|--------------|
 | **Node** (per host) | Analyse, Remove, Restore, DeployDecoy | Inspect, clean, reimage hosts, or plant honeypots |
 | **Edge** (per subnet pair) | AllowTraffic, BlockTraffic | Open or close firewall rules between subnets |
-| **Global** | Monitor | Do nothing / observe passively |
+| **Automatic** | Monitor | Runs at the end of every turn; not selectable by the policy |
 
 ---
 

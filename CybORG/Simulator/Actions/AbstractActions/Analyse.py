@@ -22,7 +22,7 @@ class Analyse(Action):
     hostname: str
         the name of the host action is targetting.
     """
-    DEFAULT_DURATION = 2
+    DEFAULT_DURATION = 1
 
     def __init__(self, session: int, agent: str, hostname: str):
         """ Instantiates Analyse action.
