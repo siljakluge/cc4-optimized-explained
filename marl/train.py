@@ -13,6 +13,7 @@ Key Components:
 """
 
 from argparse import ArgumentParser
+from pathlib import Path
 import os
 import sys
 from types import SimpleNamespace
@@ -35,6 +36,7 @@ from models.cage4 import InductiveGraphPPOAgent
 from models.memory_buffer import MultiPPOMemory
 from wrappers.graph_wrapper import GraphWrapper
 from wrappers.observation_graph import ObservationGraph
+from training_checkpoint import (atomic_torch_save, save_training_checkpoint, load_training_checkpoint)
 
 device = torch.device(
     "mps" if torch.backends.mps.is_available() else
@@ -52,11 +54,11 @@ SEED = 1337
 # 25 replicas × 5 agents saturates a 12 GB card; 8 fits comfortably on a 3080 Ti.
 # If you move to a 24 GB+ GPU (or switch to CPU rollouts) you can bump this back up.
 HYPER_PARAMS = SimpleNamespace(
-    N = 8,              # How many episodes before training
+    N = 10,              # How many episodes before training
     workers = 8,        # How many envs can run in parallel
     bs = 2500,          # How many steps to learn from at a time
     episode_len = 500,
-    training_episodes = 500_000, # Realistically, stops improving around 50k
+    training_episodes = 10_000, # Realistically, stops improving around 50k
     epochs = 4
 )
 
@@ -301,10 +303,17 @@ def train(
         warmup_updates=0,
         harden_updates=0,
         log_per_profile=False,
+    start_update=0,
+    initial_log=None,
+    initial_per_profile_log=None,
+    run_config=None,
+    checkpoint_interval=10,
+    snapshot_interval=100,
+    min_free_gb=2.0,
 ):
     [agent.train() for agent in agents]
-    log = []
-    per_profile_log = []
+    log = list(initial_log) if initial_log is not None else []
+    per_profile_log = list(initial_per_profile_log) if initial_per_profile_log is not None else []
     profile_weights = profile_weights or {}
 
     print("Hyperparams:", vars(hp))
@@ -323,7 +332,7 @@ def train(
             return agents[i].learn()
 
     # Begin training loop 
-    for update_idx in range(hp.training_episodes // hp.N):
+    for update_idx in range(start_update, hp.training_episodes // hp.N):
         e = update_idx * hp.N
         weights = get_weights_for_update(
             strategy=strategy,
@@ -378,8 +387,6 @@ def train(
                 hist[profile] = hist.get(profile, 0) + 1
             print("Profiles:", " ".join(f"{k}:{v}" for k, v in sorted(hist.items())))
         log.append((avg_reward,e,sum(last_losses)/N_AGENTS))
-        torch.save(log, f'logs/{hp.fnames}.pt')
-
         if log_per_profile:
             rewards_by_profile = {}
             for reward, profile in zip(avg_rewards, used_profiles):
@@ -392,15 +399,43 @@ def train(
                     "avg_reward": sum(rewards) / len(rewards),
                     "n": len(rewards),
                 })
-            torch.save(per_profile_log, f"logs/{hp.fnames}_per_profile.pt")
 
-        # Checkpoint model states 
-        for i in range(N_AGENTS):
-            agent = agents[i]
-            agent.save(outf=f'checkpoints/{hp.fnames}-{i}_checkpoint.pt')
+        next_update = update_idx + 1
+        is_final = next_update == hp.training_episodes // hp.N
+        if next_update % checkpoint_interval == 0 or is_final:
+            latest_path = f'checkpoints/{hp.fnames}_training.pt'
+            if next_update % snapshot_interval == 0 or is_final:
+                # Save durable historical snapshot first, then update latest.
+                snapshot_path = f'checkpoints/{hp.fnames}_update_{next_update:06d}.pt'
+                save_training_checkpoint(
+                    snapshot_path, agents, next_update, run_config,
+                    log, per_profile_log, min_free_gb=min_free_gb,
+                )
+            save_training_checkpoint(
+                latest_path, agents, next_update, run_config,
+                log, per_profile_log, min_free_gb=min_free_gb,
+            )
+            # Secondary logs: checkpoint is the authoritative resume source.
+            atomic_torch_save(log, f'logs/{hp.fnames}.pt', min_free_gb=min_free_gb)
+            if log_per_profile:
+                atomic_torch_save(per_profile_log,
+                    f'logs/{hp.fnames}_per_profile.pt', min_free_gb=min_free_gb)
+            print(f"Checkpoint saved at update {next_update} / {hp.training_episodes // hp.N}", flush=True)
 
-            if e % 10_000 < hp.N and e > hp.N:
-                agent.save(outf=f'checkpoints/{hp.fnames}-{i}_{e//1000}k.pt')
+    # Export legacy per-agent files only when training completed successfully.
+    # Existing evaluation/submission programs can still load these weights.
+    for i, agent in enumerate(agents):
+        path = Path(f'checkpoints/{hp.fnames}-{i}_checkpoint.pt')
+        temporary = path.with_name(path.name + '.tmp')
+        try:
+            agent.save(outf=str(temporary))
+            import os as _os
+            with temporary.open('rb') as f:
+                torch.load(f, map_location='cpu', weights_only=False)
+            _os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
 
 
 if __name__ == '__main__':
@@ -421,7 +456,16 @@ if __name__ == '__main__':
     ap.add_argument("--log_per_profile", action="store_true")
     ap.add_argument("--mini", action="store_true", help="Tiny local smoke-test config")
     ap.add_argument("--KIServer", action="store_true", help="Larger GPU/server config")
+    ap.add_argument("--resume", default=None, help="Path to joint training checkpoint")
+    ap.add_argument("--checkpoint_interval", type=int, default=10,
+                    help="Save joint checkpoint every N PPO updates")
+    ap.add_argument("--snapshot_interval", type=int, default=100,
+                    help="Keep a historical checkpoint every N updates")
+    ap.add_argument("--min_free_gb", type=float, default=2.0,
+                    help="Minimum free filesystem space required before checkpoint writing")
     args = ap.parse_args()
+    if args.checkpoint_interval < 1 or args.snapshot_interval < 1 or args.min_free_gb < 0:
+        ap.error("checkpoint_interval and snapshot_interval must be >= 1; min_free_gb >= 0")
     print(args)
 
     os.environ["CYBORG_PHASE_REWARD_MODE"] = args.phase_reward_mode
@@ -490,9 +534,43 @@ if __name__ == '__main__':
     if args.single_profile not in PROFILE_REGISTRY:
         raise ValueError(f"Unknown single_profile={args.single_profile}. Available: {sorted(PROFILE_REGISTRY)}")
 
+    # Enforce identical configuration when resuming (episode count and seed included).
+    run_config = {
+        "hyperparams": vars(HYPER_PARAMS).copy(),
+        "seed": SEED,
+        "hidden": args.hidden,
+        "embedding": args.embedding,
+        "strategy": args.strategy,
+        "single_profile": args.single_profile,
+        "profile_weights": weights,
+        "warmup_updates": args.warmup_updates,
+        "harden_updates": args.harden_updates,
+        "log_per_profile": args.log_per_profile,
+        "phase_reward_mode": args.phase_reward_mode,
+        "reward_blue": args.reward_blue,
+    }
+    start_update = 0
+    initial_log = None
+    initial_per_profile_log = None
+    if args.resume:
+        checkpoint = load_training_checkpoint(args.resume, agents, run_config)
+        start_update = checkpoint["next_update"]
+        initial_log = checkpoint["log"]
+        initial_per_profile_log = checkpoint["per_profile_log"]
+        print(f"Resuming at update {start_update}", flush=True)
+    if start_update >= HYPER_PARAMS.training_episodes // HYPER_PARAMS.N:
+        raise ValueError("Checkpoint has already reached planned training length")
+
     train(
         agents,
         HYPER_PARAMS,
+        start_update=start_update,
+        initial_log=initial_log,
+        initial_per_profile_log=initial_per_profile_log,
+        run_config=run_config,
+        checkpoint_interval=args.checkpoint_interval,
+        snapshot_interval=args.snapshot_interval,
+        min_free_gb=args.min_free_gb,
         strategy=args.strategy,
         single_profile=args.single_profile,
         profile_weights=weights,

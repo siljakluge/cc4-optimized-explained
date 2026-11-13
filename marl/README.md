@@ -508,3 +508,31 @@ marl/
   Year = {2023}
 }
 ```
+
+
+## Resumable training checkpoints
+
+Train with `python -u marl/train.py marl_run_02 --KIServer --device cuda`.
+Every 10 PPO updates, a joint training checkpoint containing all five policies,
+critics, Adam optimizers, RNG states and reward history is atomically committed to
+`checkpoints/marl_run_02_training.pt`. Historical snapshots are retained every
+100 updates; all intervals are configurable via `--checkpoint_interval` and
+`--snapshot_interval`. Checkpoint files require free disk space (default 2 GiB).
+
+Resume with:
+
+```bash
+python -u marl/train.py marl_run_02 --KIServer --device cuda \
+  --resume checkpoints/marl_run_02_training.pt
+```
+
+The training configuration must match the saved one. A resumed run starts
+from the **next completed update**; updates after the last saved checkpoint
+may be repeated. Old per-agent `*_checkpoint.pt` files are inference-only
+and cannot provide exact optimizer-state resume. Legacy per-agent weights are
+exported on successful completion. For numerical reproducibility, keep the
+same software and GPU environment; nondeterministic CUDA operations may vary.
+
+Before deploying: run `python -m unittest discover -s tests -p
+"test_training_checkpoint.py"`. A completed local `--mini` smoke test is
+recommended.
