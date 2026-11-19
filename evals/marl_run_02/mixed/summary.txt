@@ -1,0 +1,7 @@
+CybORG v4.0, Scenario4
+Author: GNN_marl_02, Team: Team.KI, Technique: Graph-based PPO with inter-agent communication
+Average reward is: -90.3 with a standard deviation of 79.63724574023708
+Using agents {'blue_agent_0': <marl.models.cage4.InductiveGraphPPOAgent object at 0x12d9b28d0>, 'blue_agent_1': <marl.models.cage4.InductiveGraphPPOAgent object at 0x171867fb0>, 'blue_agent_2': <marl.models.cage4.InductiveGraphPPOAgent object at 0x16e126fc0>, 'blue_agent_3': <marl.models.cage4.InductiveGraphPPOAgent object at 0x171866ab0>, 'blue_agent_4': <marl.models.cage4.InductiveGraphPPOAgent object at 0x171916990>}
+Strategy: mixture
+Profile weights: {'fsm_default': 0.35, 'stealth_pivot': 0.25, 'lateral_spread': 0.2, 'impact_rush': 0.15, 'deception_aware': 0.05}
+Per-profile stats: {'lateral_spread': {'n': 21, 'mean': -45.80952380952381, 'stdev': 14.94195116984073}, 'stealth_pivot': {'n': 27, 'mean': -64.66666666666667, 'stdev': 74.27133208197338}, 'impact_rush': {'n': 17, 'mean': -175.1764705882353, 'stdev': 83.29108242642009}, 'fsm_default': {'n': 33, 'mean': -98.45454545454545, 'stdev': 75.27744138729864}, 'deception_aware': {'n': 2, 'mean': -47.5, 'stdev': 3.5355339059327378}}

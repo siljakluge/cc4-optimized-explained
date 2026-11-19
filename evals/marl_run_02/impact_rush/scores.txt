@@ -1,0 +1,3 @@
+reward_mean: -187.66
+reward_stdev: 109.07843716585535
+impact_rush: n=100 mean=-187.66 stdev=109.07843716585535

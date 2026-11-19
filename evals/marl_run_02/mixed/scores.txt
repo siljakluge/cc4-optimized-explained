@@ -1,0 +1,7 @@
+reward_mean: -90.3
+reward_stdev: 79.63724574023708
+deception_aware: n=2 mean=-47.5 stdev=3.5355339059327378
+fsm_default: n=33 mean=-98.45454545454545 stdev=75.27744138729864
+impact_rush: n=17 mean=-175.1764705882353 stdev=83.29108242642009
+lateral_spread: n=21 mean=-45.80952380952381 stdev=14.94195116984073
+stealth_pivot: n=27 mean=-64.66666666666667 stdev=74.27133208197338

@@ -1,0 +1,3 @@
+reward_mean: -65.15
+reward_stdev: 71.0278612285846
+lateral_spread: n=100 mean=-65.15 stdev=71.0278612285846
