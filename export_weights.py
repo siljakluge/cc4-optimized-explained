@@ -5,8 +5,8 @@ from marl.models.cage4 import load
 contractor_active = True
 
 if contractor_active:
-    SRC = "checkpoints/marl_run_01"  # this is the prefix used by train.py: f"{fname}-{i}_checkpoint.pt"
-    DST = "weights/marl_run_0"
+    SRC = "checkpoints/marl_run_02"  # this is the prefix used by train.py: f"{fname}-{i}_checkpoint.pt"
+    DST = "weights/marl_run_02"
 else:
     SRC = "checkpoints/contractorinactive"   # <-- fname aus train.py
     DST = "weights/contractor_inactive"
