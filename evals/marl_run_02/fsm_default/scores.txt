@@ -1,0 +1,3 @@
+reward_mean: -125.82
+reward_stdev: 117.61316321575643
+fsm_default: n=100 mean=-125.82 stdev=117.61316321575643

@@ -71,14 +71,10 @@ def evaluate_one_episode(cyborg, wrapped_cyborg, agents_dict, write_to_file, i, 
             for agent_name, agent in agents_dict.items()
             if agent_name in wrapped_cyborg.agents
         }
-        observations, rew, term, trunc, info = wrapped_cyborg.step(actions)
-        done = {
-            agent: term.get(agent, False) or trunc.get(agent, False)
-            for agent in wrapped_cyborg.agents
-        }
-        if all(done.values()):
-            break
+        observations, rew, term, trunc, info = wrapped_cyborg.step(actions)[:5]
         r.append(mean(rew.values()))
+        if term.get("__all__", False) or trunc.get("__all__", False) or (actions and all(term.get(a, False) or trunc.get(a, False) for a in actions)):
+            break
 
         if write_to_file:
             a.append(
@@ -251,14 +247,10 @@ def run_evaluation(submission, log_path, max_eps=100, write_to_file=False, seed=
                 for agent_name, agent in submission.AGENTS.items()
                 if agent_name in wrapped_cyborg.agents
             }
-            observations, rew, term, trunc, info = wrapped_cyborg.step(actions)
-            done = {
-                agent: term.get(agent, False) or trunc.get(agent, False)
-                for agent in wrapped_cyborg.agents
-            }
-            if all(done.values()):
-                break
+            observations, rew, term, trunc, info = wrapped_cyborg.step(actions)[:5]
             r.append(mean(rew.values()))
+            if term.get("__all__", False) or trunc.get("__all__", False) or (actions and all(term.get(a, False) or trunc.get(a, False) for a in actions)):
+                break
             if write_to_file:
                 a.append(
                     {
@@ -378,6 +370,8 @@ if __name__ == "__main__":
     rmkdir(args.output_path)
 
     submission = load_submission(args.submission_path)
+    if isinstance(submission, type):
+        submission = submission()
 
     if args.distribute == 1:
         run_evaluation(

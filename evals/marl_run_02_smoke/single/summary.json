@@ -1,0 +1,40 @@
+{
+  "submission": {
+    "author": "GNN_marl_02",
+    "team": "Team.KI",
+    "technique": "Graph-based PPO with inter-agent communication"
+  },
+  "parameters": {
+    "seed": 1337,
+    "episode_length": 500,
+    "phase_reward_mode": "default",
+    "reward_blue": false,
+    "weights_dir": "/Users/siljakluge/PycharmProjects/cc4-optimized-explained/weights/marl_run_02",
+    "max_episodes": 1,
+    "strategy": "single",
+    "single_profile": "fsm_default",
+    "profile_weights": null
+  },
+  "time": {
+    "start": "2026-11-19 15:44:37.051034",
+    "end": "2026-11-19 15:44:48.062151",
+    "elapsed": "0:00:11.011117"
+  },
+  "reward": {
+    "mean": -96,
+    "stdev": 0.0
+  },
+  "profiles": {
+    "used": [
+      "fsm_default"
+    ],
+    "per_profile": {}
+  },
+  "agents": {
+    "blue_agent_0": "<marl.models.cage4.InductiveGraphPPOAgent object at 0x135c56090>",
+    "blue_agent_1": "<marl.models.cage4.InductiveGraphPPOAgent object at 0x16739fad0>",
+    "blue_agent_2": "<marl.models.cage4.InductiveGraphPPOAgent object at 0x167403e30>",
+    "blue_agent_3": "<marl.models.cage4.InductiveGraphPPOAgent object at 0x1674d9460>",
+    "blue_agent_4": "<marl.models.cage4.InductiveGraphPPOAgent object at 0x166375f40>"
+  }
+}

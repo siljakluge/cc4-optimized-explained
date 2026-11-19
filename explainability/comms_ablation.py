@@ -66,7 +66,7 @@ def main():
         "per_seed": per_seed,
         "delta_content": delta("content"),
         "delta_empty": delta("empty"),
-        "note": "fixed-env (cc4-optimized); V11a reads messages so ablation is meaningful",
+        "note": "fixed-env (cc4-optimized); paired outgoing-message ablation",
     }
     outpath = args.out or f"explainability/comms_{args.backend}_{args.profile}.json"
     Path(outpath).parent.mkdir(parents=True, exist_ok=True)

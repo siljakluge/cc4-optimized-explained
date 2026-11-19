@@ -1,0 +1,3 @@
+reward_mean: -78.08
+reward_stdev: 77.9229974741317
+discovery: n=100 mean=-78.08 stdev=77.9229974741317

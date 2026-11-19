@@ -26,6 +26,7 @@ the ICMCIS/MILCOM paper, which used ExplainabilityCC4's original environment.
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -33,7 +34,6 @@ import numpy as np
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / "CybORG" / "Evaluation" / "submission"))
 
 from CybORG import CybORG                                              # noqa: E402
 from CybORG.Agents import (                                           # noqa: E402
@@ -50,22 +50,8 @@ MSG_LEN = 8                       # bits per inter-agent message
 # Red behaviour profiles (the ablation / robustness sweep).
 # --------------------------------------------------------------------------- #
 def red_registry() -> dict:
-    """profile name -> red agent class. fsm_default is the base FSM agent."""
-    reg = {"fsm_default": FiniteStateRedAgent}
-    try:
-        from CybORG.Agents.SimpleAgents.FSMRedVariants import (        # noqa: E402
-            VerboseFSRed, DiscoveryFSRed, StealthPivotFSRed,
-            ImpactRushFSRed, DeceptionAwareFSRed, LateralSpreadFSRed,
-        )
-        reg.update({
-            "verbose": VerboseFSRed, "discovery": DiscoveryFSRed,
-            "stealth_pivot": StealthPivotFSRed, "impact_rush": ImpactRushFSRed,
-            "deception_aware": DeceptionAwareFSRed,
-            "lateral_spread": LateralSpreadFSRed,
-        })
-    except Exception as exc:                                           # pragma: no cover
-        print(f"[harness] red variants unavailable ({exc}); fsm_default only")
-    return reg
+    from evaluate import PROFILE_REGISTRY
+    return dict(PROFILE_REGISTRY)
 
 
 # --------------------------------------------------------------------------- #
@@ -73,7 +59,7 @@ def red_registry() -> dict:
 # --------------------------------------------------------------------------- #
 def _load_submission():
     """Load the official heuristic Submission module by file path."""
-    path = REPO / "CybORG" / "Evaluation" / "submission" / "submission.py"
+    path = REPO / "CybORG" / "Evaluation" / "submission_v11a" / "submission.py"
     spec = importlib.util.spec_from_file_location("_cc4_submission", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -149,18 +135,50 @@ def run_episode_heuristic(active_idx, submission, seed, steps, red_cls,
 # MARL.
 # --------------------------------------------------------------------------- #
 def run_episode_marl(active_idx, team, seed, steps, red_cls, ablate_comms=None):
-    """Coalition episode for the GNN policy.
+    """Matched-seed coalition/communication evaluation with the fixed graph wrapper.
 
-    Not yet wired: trained gnn_ppo checkpoints for the FIXED environment do not
-    exist in the repo yet (training in progress). When they do, this mirrors
-    run_episode_heuristic using marl.wrappers.graph_wrapper.GraphWrapper and
-    marl.models.cage4.load, substituting Sleep for absent agents and (for the
-    ablation) zeroing the message tensor in the graph wrapper.
+    Absent defenders use the wrapper's None -> Monitor fallback and send no
+    messages. All defenders remain in the environment with their own sessions.
     """
-    raise NotImplementedError(
-        "MARL coalition backend pending trained weights for the fixed env. "
-        "See docstring; wire against marl/models/cage4.py once checkpoints exist."
+    import random
+    import torch
+
+    if ablate_comms not in (None, "content", "empty"):
+        raise ValueError(f"Unknown ablation mode: {ablate_comms}")
+    active = set(active_idx)
+    random.seed(seed)
+    np.random.seed(seed % 2**32)
+    torch.manual_seed(seed)
+    sg = EnterpriseScenarioGenerator(
+        blue_agent_class=SleepAgent, green_agent_class=EnterpriseGreenAgent,
+        red_agent_class=red_cls, steps=steps,
     )
+    env = team.wrap(CybORG(sg, "sim", seed=seed))
+    obs, _ = env.reset()
+    total = 0.0
+    for t in range(steps):
+        actions = {}
+        for i, name in enumerate(AGENT_NAMES):
+            if name not in env.agents or name not in obs:
+                continue
+            if i in active:
+                # Match policy RNG per agent and timestep, even across coalitions.
+                torch.manual_seed((int(seed) * 1000003 + t * 5 + i) % (2**63))
+                actions[name] = team.AGENTS[name].get_action(obs[name], env.action_space(name))
+            else:
+                actions[name] = None  # GraphWrapper translates None to Monitor
+            if i not in active:
+                env.msg[name] = np.zeros_like(env.msg[name])
+            elif ablate_comms:
+                env.msg[name] = _ablate_message(env.msg[name], ablate_comms)
+        result = env.step(actions)
+        obs, rew, term, trunc, _ = result[:5]
+        total += float(rew["blue_agent_0"]) if rew else 0.0
+        if term.get("__all__", False) or trunc.get("__all__", False):
+            break
+        if actions and all(term.get(a, False) or trunc.get(a, False) for a in actions):
+            break
+    return total
 
 
 # --------------------------------------------------------------------------- #
@@ -168,10 +186,15 @@ def run_episode_marl(active_idx, team, seed, steps, red_cls, ablate_comms=None):
 # --------------------------------------------------------------------------- #
 def make_backend(kind: str):
     """Return (run_episode_fn, team_obj). team_obj is backend-specific."""
+    os.environ.setdefault("CYBORG_REWARD_LOG_PATH", os.devnull)
     if kind == "heuristic":
         sub = _load_submission()
         return (lambda active, team, seed, steps, red, abl=None:
                 run_episode_heuristic(active, sub, seed, steps, red, abl)), sub
     if kind == "marl":
-        return run_episode_marl, None
+        # Root submission is imported by explicit path, not the heuristic module.
+        spec = importlib.util.spec_from_file_location("_cc4_marl_submission", REPO / "submission.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return run_episode_marl, module.Submission()
     raise ValueError(f"unknown backend: {kind}")

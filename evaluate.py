@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Dict, List
 import random
+import numpy as np
+import torch
 from tqdm import tqdm
 from joblib import Parallel, delayed
 from statistics import mean, stdev
@@ -273,7 +275,12 @@ def evaluate_one_episode(
     # falls base_seed None: trotzdem stabil via episode_idx
     env_seed = (base_seed if base_seed is not None else 0) + 100_000 + episode_idx
 
-    red_cls = PROFILE_REGISTRY.get(profile_name, PROFILE_REGISTRY.get("fsm_default"))
+    random.seed(env_seed)
+    np.random.seed(env_seed % 2**32)
+    torch.manual_seed(env_seed)
+    if profile_name not in PROFILE_REGISTRY:
+        raise ValueError(f"Unknown red profile: {profile_name}")
+    red_cls = PROFILE_REGISTRY[profile_name]
     cyborg, wrapped_cyborg = make_env_for_episode(env_seed, EPISODE_LENGTH, red_cls, submission)
 
     observations, _ = wrapped_cyborg.reset()
@@ -294,20 +301,19 @@ def evaluate_one_episode(
             if agent_name in wrapped_cyborg.agents
         }
 
-        observations, rew, term, trunc, info = wrapped_cyborg.step(actions)
-
-        done = {
-            agent: term.get(agent, False) or trunc.get(agent, False)
-            for agent in wrapped_cyborg.agents
-        }
-        if all(done.values()):
-            break
-
+        step_result = wrapped_cyborg.step(actions)
+        observations, rew, term, trunc, info = step_result[:5]
         r.append(mean(rew.values()))
 
-        if write_to_file:
-            a.append({agent_name: cyborg.get_last_action(agent_name) for agent_name in wrapped_cyborg.agents})
-            o.append({agent_name: observations[agent_name] for agent_name in observations.keys()})
+        if write_to_file and os.environ.get("CC4_EVAL_SUMMARY_ONLY") != "1":
+            a.append({name: str(cyborg.get_last_action(name)) for name in actions})
+            # Convert immediately, since GraphWrapper may reuse tensor buffers.
+            o.append({name: str(value) for name, value in observations.items()})
+
+        if term.get("__all__", False) or trunc.get("__all__", False):
+            break
+        if actions and all(term.get(name, False) or trunc.get(name, False) for name in actions):
+            break
 
     total_reward = sum(r)
     return total_reward, a, o, profile_name
@@ -435,21 +441,22 @@ def run_evaluation_parallel_profiles(
         if log_per_profile:
             data.write(f"Per-profile stats: {per_profile_stats}\n")
 
-    with open(log_path + "full.txt", "w") as data:
-        data.write(version_header + "\n")
-        data.write(author_header + "\n")
-        data.write(reward_string + "\n")
-        for act, obs, sum_rew, prof in zip(actions_log, obs_log, total_reward, used_profiles):
-            data.write(f"profile: {prof}\n")
-            data.write(f"actions: {act},\n observations: {obs},\n total reward: {sum_rew}\n\n")
+    if os.environ.get("CC4_EVAL_SUMMARY_ONLY") != "1":
+        with open(log_path + "full.txt", "w") as data:
+            data.write(version_header + "\n")
+            data.write(author_header + "\n")
+            data.write(reward_string + "\n")
+            for act, obs, sum_rew, prof in zip(actions_log, obs_log, total_reward, used_profiles):
+                data.write(f"profile: {prof}\n")
+                data.write(f"actions: {act},\n observations: {obs},\n total reward: {sum_rew}\n\n")
 
-    with open(log_path + "actions.txt", "w") as data:
-        data.write(version_header + "\n")
-        data.write(author_header + "\n")
-        data.write(reward_string + "\n")
-        for act, prof in zip(actions_log, used_profiles):
-            data.write(f"profile: {prof}\n")
-            data.write(f"actions: {act}\n\n")
+        with open(log_path + "actions.txt", "w") as data:
+            data.write(version_header + "\n")
+            data.write(author_header + "\n")
+            data.write(reward_string + "\n")
+            for act, prof in zip(actions_log, used_profiles):
+                data.write(f"profile: {prof}\n")
+                data.write(f"actions: {act}\n\n")
 
     with open(log_path + "summary.json", "w") as output:
         payload = {
@@ -461,6 +468,9 @@ def run_evaluation_parallel_profiles(
             "parameters": {
                 "seed": seed,
                 "episode_length": EPISODE_LENGTH,
+                "phase_reward_mode": os.environ.get("CYBORG_PHASE_REWARD_MODE", "default"),
+                "reward_blue": os.environ.get("CYBORG_REWARD_BLUE", "0") == "1",
+                "weights_dir": getattr(submission, "weights_dir", None),
                 "max_episodes": max_eps,
                 "strategy": strategy,
                 "single_profile": single_profile if strategy == "single" else None,
@@ -648,7 +658,21 @@ if __name__ == "__main__":
         help='Optional comma-separated reward modes for blue analyse reward in sweep mode, e.g. "red_only".'
     )
 
+    parser.add_argument("--summary-only", action="store_true",
+                        help="Skip verbose action/graph traces; retain score summaries")
     args = parser.parse_args()
+    if args.reward_mode_strategy != "single" or args.reward_modes or args.reward_blue_modes:
+        parser.error("Reward-mode sweeps are not implemented; run each mode separately.")
+    if args.mode == "single" and args.strategy == "single" and args.single_profile not in PROFILE_REGISTRY:
+        parser.error(f"Unknown red profile {args.single_profile}")
+    expected = {"fsm_default", "discovery", "stealth_pivot", "lateral_spread", "impact_rush", "deception_aware"}
+    if args.mode == "sweep" and not expected.issubset(PROFILE_REGISTRY):
+        parser.error(f"Missing red profiles: {sorted(expected - set(PROFILE_REGISTRY))}")
+    os.environ["CYBORG_PHASE_REWARD_MODE"] = args.phase_reward_mode
+    os.environ["CYBORG_REWARD_BLUE"] = "1" if args.reward_blue else "0"
+    # Reward decomposition belongs to explain.py; avoid a shared worker log.
+    os.environ["CYBORG_REWARD_LOG_PATH"] = os.devnull
+    os.environ["CC4_EVAL_SUMMARY_ONLY"] = "1" if args.summary_only else "0"
 
     # Optional timestamp behavior:
     # - single mode: append to output-path

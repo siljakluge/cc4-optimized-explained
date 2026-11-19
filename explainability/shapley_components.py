@@ -62,43 +62,27 @@ def _parse_components(log_path: Path) -> dict:
     return acc
 
 
-def run_episode(active_idx, submission, seed, steps, red_cls, logdir):
-    """Scalar v(S) plus per-component totals for one coalition episode."""
+def run_episode(active_idx, backend, seed, steps, red_cls, logdir):
+    """Scalar v(S) and component totals using the shared backend."""
+    run, team = backend
     active = set(active_idx)
     log_path = Path(logdir) / f"rew_{'-'.join(map(str, sorted(active)))}_{seed}.jsonl"
-    if log_path.exists():
-        log_path.unlink()
-    os.environ["CYBORG_REWARD_LOG_PATH"] = str(log_path)
-
-    sg = EnterpriseScenarioGenerator(
-        blue_agent_class=SleepAgent, green_agent_class=EnterpriseGreenAgent,
-        red_agent_class=red_cls, steps=steps)
-    env = submission.Submission.wrap(CybORG(sg, "sim", seed=seed))
-    agents = submission.Submission.AGENTS
-    obs, _ = env.reset()
-    sleep_idx = {a: env.action_labels(a).index("Sleep") for a in H.AGENT_NAMES}
-
-    total = 0.0
-    for _ in range(steps):
-        live = [a for a in env.agents if a in obs]
-        actions = {}
-        for a in live:
-            i = H.AGENT_NAMES.index(a)
-            if i in active:
-                actions[a] = agents[a].get_action(obs[a], env.action_space(a))
-            else:
-                actions[a] = sleep_idx[a]
-                agents[a]._last_message = None
-        obs, rew, term, trunc, _ = env.step(actions)
-        # shared team reward: take one agent's value, not the sum (see harness.py)
-        total += float(next(iter(rew.values()))) if rew else 0.0
-        if (term and all(term.values())) or (trunc and all(trunc.values())):
-            break
-
-    comp = _parse_components(log_path)
-    comp["cost"] = total - sum(comp.values())   # = action cost (Restore -1 each); reconciles exactly
     log_path.unlink(missing_ok=True)
-    return total, comp
+    previous = os.environ.get("CYBORG_REWARD_LOG_PATH")
+    os.environ["CYBORG_REWARD_LOG_PATH"] = str(log_path)
+    try:
+        total = run(active, team, seed, steps, red_cls, None)
+        if not log_path.is_file() or log_path.stat().st_size == 0:
+            raise RuntimeError(f"No reward components written: {log_path}")
+        comp = _parse_components(log_path)
+        comp["cost"] = total - sum(comp.values())  # residual, not independently measured
+        return total, comp
+    finally:
+        if previous is None:
+            os.environ.pop("CYBORG_REWARD_LOG_PATH", None)
+        else:
+            os.environ["CYBORG_REWARD_LOG_PATH"] = previous
+        log_path.unlink(missing_ok=True)
 
 
 def shapley(vmean: dict) -> np.ndarray:
@@ -114,7 +98,7 @@ def shapley(vmean: dict) -> np.ndarray:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--backend", choices=["heuristic"], default="heuristic")
+    ap.add_argument("--backend", choices=["heuristic", "marl"], default="heuristic")
     ap.add_argument("--seeds", type=int, default=20)
     ap.add_argument("--steps", type=int, default=500)
     ap.add_argument("--base-seed", type=int, default=1000)
@@ -122,7 +106,7 @@ def main():
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
-    submission = H._load_submission()
+    submission = H.make_backend(args.backend)
     red_cls = H.red_registry()[args.profile]
     seeds = [args.base_seed + k for k in range(args.seeds)]
     masks = [frozenset(c) for r in range(N + 1) for c in combinations(range(N), r)]

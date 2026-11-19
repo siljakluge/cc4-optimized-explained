@@ -47,16 +47,7 @@ from SHAP.shap_gnn import run_shap, write_profile_shap_comparison
 # ----------------------------
 
 def rmkdir(path: str):
-    partial_path = ""
-    for p in path.split("/"):
-        if not p:
-            continue
-        partial_path = os.path.join(partial_path, p)
-        if os.path.exists(partial_path):
-            if os.path.isdir(partial_path):
-                continue
-            raise RuntimeError(f"Cannot create {partial_path} (exists as file).")
-        os.mkdir(partial_path)
+    Path(path).mkdir(parents=True, exist_ok=True)
 
 def ensure_dir(p: str | Path):
     Path(p).mkdir(parents=True, exist_ok=True)
@@ -352,6 +343,11 @@ def run_one_episode_and_log(
       total_reward_scalar, policy_rows (heuristic SHAP), all_info_steps (for GNN SHAP)
     """
 
+    if env_seed is not None:
+        import torch
+        random.seed(env_seed)
+        np.random.seed(env_seed % 2**32)
+        torch.manual_seed(env_seed)
     _, wrapped_cyborg = make_env(env_seed, episode_length, red_cls, submission)
     observations, _ = wrapped_cyborg.reset()
 
@@ -359,6 +355,7 @@ def run_one_episode_and_log(
     policy_rows: List[Any] = []
     all_info_steps: List[Dict[str, Any]] = []
 
+    previous_info = {}
     for t in range(episode_length):
         actions = {
             agent_name: agent.get_action(
@@ -398,7 +395,22 @@ def run_one_episode_and_log(
         # ---- log actions (per profile) ----
         log_actions_jsonl(log_path_actions, episode=episode_idx, step=t, actions=actions_actual, mode="type")
 
-        all_info_steps.append(info)
+        if shap and not is_heuristic:
+            # GraphWrapper provides features AFTER executing the current action.
+            # Align features from the previous step with THIS policy decision.
+            # No initial feature record exists; skip t=0 and blocked decisions.
+            aligned = {}
+            for name, action_id in actions.items():
+                old = previous_info.get(name, {})
+                current = info.get(name, {})
+                if action_id is not None and old.get("shap_features") and current.get("chosen_action_type"):
+                    aligned[name] = {"shap_features": dict(old["shap_features"]),
+                                     "chosen_action_type": current["chosen_action_type"]}
+            all_info_steps.append(aligned)
+            previous_info = {name: {"shap_features": dict(d.get("shap_features", {}))}
+                             for name, d in info.items() if isinstance(d, dict)}
+        elif shap:
+            all_info_steps.append(info)
         if prof_dir is not None:
             scalar_log = prof_dir / "scalar_rewards.jsonl"  # or output_dir/<profile>/scalar_rewards.jsonl
             with scalar_log.open("a", encoding="utf-8") as f:
@@ -446,7 +458,7 @@ def run_one_episode_and_log(
             agent: term.get(agent, False) or trunc.get(agent, False)
             for agent in wrapped_cyborg.agents
         }
-        if done and all(done.values()):
+        if term.get("__all__", False) or trunc.get("__all__", False) or (done and all(done.values())):
             break
 
     return reward_sum, policy_rows, all_info_steps
@@ -592,8 +604,7 @@ def run_explainability_profiles(
                 error=str(exc),
                 traceback=traceback.format_exc(),
             )
-            print(f"[{prof}] Episode {epi} failed with {type(exc).__name__}: {exc}; continuing.")
-            return False, 0.0, [], []
+            raise RuntimeError(f"[{prof}] Episode {epi} failed; see episode_errors.jsonl") from exc
 
     if mode == "sweep":
         pbar = tqdm(total=len([p for p in profiles_to_run]), desc="Explainability sweep", unit="run", dynamic_ncols=True)
@@ -742,7 +753,9 @@ def run_explainability_profiles(
             continue
 
         totals = totals_by_profile.get(prof, [])
-        reward_mean = mean(totals) if totals else 0.0
+        if not totals:
+            raise RuntimeError(f"No successful episodes for {prof}")
+        reward_mean = mean(totals)
         reward_stdev = stdev(totals) if len(totals) > 1 else 0.0
         print(f"[{prof}] Average total (scalar): {reward_mean:.2f} ± {reward_stdev:.2f}")
 

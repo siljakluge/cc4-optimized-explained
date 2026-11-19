@@ -1,0 +1,6 @@
+CybORG v4.0, Scenario4
+Author: GNN_marl_02, Team: Team.KI, Technique: Graph-based PPO with inter-agent communication
+Average reward is: -96 with a standard deviation of 0.0
+Using agents {'blue_agent_0': <marl.models.cage4.InductiveGraphPPOAgent object at 0x135c56090>, 'blue_agent_1': <marl.models.cage4.InductiveGraphPPOAgent object at 0x16739fad0>, 'blue_agent_2': <marl.models.cage4.InductiveGraphPPOAgent object at 0x167403e30>, 'blue_agent_3': <marl.models.cage4.InductiveGraphPPOAgent object at 0x1674d9460>, 'blue_agent_4': <marl.models.cage4.InductiveGraphPPOAgent object at 0x166375f40>}
+Strategy: single
+Single profile: fsm_default
