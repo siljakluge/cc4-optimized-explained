@@ -13,7 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent  # geht von plotting/ eine Ebe
 CSV_DIR = BASE_DIR / "exported_csv"
 
 RUNS = [
-    ("SimpleGNN", CSV_DIR / "contractoractive.csv"),
+    ("NewGNN", CSV_DIR / "marl_run_02.csv"),
 ]
 
 OUTDIR = Path("Plots/trainingCurves")

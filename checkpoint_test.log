@@ -1,0 +1,21 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+Using device: cuda
+Namespace(fname='checkpoint_test', hidden=256, embedding=128, debug=False, phase_reward_mode='default', reward_blue=False, device='cuda', strategy='single', single_profile='fsm_default', profile_weights='', warmup_updates=2, harden_updates=0, log_per_profile=False, mini=True, KIServer=False, resume=None, checkpoint_interval=10, snapshot_interval=100, min_free_gb=2.0)
+Overriding device selection. Using cuda for training.
+Hyperparams: {'N': 2, 'workers': 1, 'bs': 32, 'episode_len': 10, 'training_episodes': 2, 'epochs': 1, 'scenario_pool_size': 1, 'fnames': 'checkpoint_test'}
+Available red profiles: ['deception_aware', 'discovery', 'fsm_default', 'impact_rush', 'lateral_spread', 'stealth_pivot', 'verbose']
+Training strategy: single
+Worker 0:   0%|          | 0/10 [00:00<?, ?it/s]Worker 0:  10%|█         | 1/10 [00:00<00:03,  2.59it/s]Worker 0:  40%|████      | 4/10 [00:00<00:00,  9.83it/s]Worker 0:  80%|████████  | 8/10 [00:00<00:00, 17.69it/s]Worker 0: 100%|██████████| 10/10 [00:00<00:00, 14.73it/s]
+Worker 1:   0%|          | 0/10 [00:00<?, ?it/s]Worker 1:  30%|███       | 3/10 [00:00<00:00, 26.77it/s]Worker 1:  60%|██████    | 6/10 [00:00<00:00, 18.45it/s]Worker 1:  90%|█████████ | 9/10 [00:00<00:00, 22.16it/s]Worker 1: 100%|██████████| 10/10 [00:00<00:00, 21.71it/s]
+Updating
+[0] C-Loss: 0.5631  A-Loss: -0.0869 E-loss: -0.0512
+[0] C-Loss: 0.5173  A-Loss: -0.1365 E-loss: -0.0402
+[0] C-Loss: 0.4296  A-Loss: 0.0244 E-loss: -0.0415
+[0] C-Loss: 0.6025  A-Loss: -0.4601 E-loss: -0.0409
+[0] C-Loss: 0.5069  A-Loss: 0.1475 E-loss: -0.0422
+[0] Loss: [-0.3836,-0.3616,-0.4362,-0.4213,-0.3786]
+Avg reward for episode: -13.0
+Checkpoint saved at update 1 / 1

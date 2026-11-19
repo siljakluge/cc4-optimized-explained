@@ -1,12 +1,12 @@
 import os
 import torch
-from models.cage4 import load  # eure load()-Funktion
+from marl.models.cage4 import load
 
 contractor_active = True
 
 if contractor_active:
-    SRC = "checkpoints/default_curriculum"  # this is the prefix used by train.py: f"{fname}-{i}_checkpoint.pt"
-    DST = "weights/default_curriculum"
+    SRC = "checkpoints/marl_run_01"  # this is the prefix used by train.py: f"{fname}-{i}_checkpoint.pt"
+    DST = "weights/marl_run_0"
 else:
     SRC = "checkpoints/contractorinactive"   # <-- fname aus train.py
     DST = "weights/contractor_inactive"

@@ -18,8 +18,8 @@ from torch.optim import Adam
 from torch.distributions.categorical import Categorical
 from torch_geometric.nn import GCNConv
 
-from models.memory_buffer import MultiPPOMemory
-from models.utils import combine_marl_states
+from marl.models.memory_buffer import MultiPPOMemory
+from marl.models.utils import combine_marl_states
 
 MAX_SERVERS = 6
 MAX_USERS = 10
@@ -540,11 +540,11 @@ class InductiveGraphPPOAgent():
         return last_total_loss.item() if last_total_loss is not None else 0.0
 
 
-def load(in_f):
+def load(in_f, map_location="cpu"):
     '''
     Loads model checkpoint file
     '''
-    data = torch.load(in_f, map_location='cpu', weights_only=False)
+    data = torch.load(in_f, map_location=map_location)
     args,kwargs = data['agent']
 
     agent = InductiveGraphPPOAgent(*args, **kwargs)
